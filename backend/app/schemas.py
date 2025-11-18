@@ -19,7 +19,14 @@ class Article(BaseModel):
     id: str = Field(..., description="Unique ID for the article (hash)")
     source_id: str = Field(..., description="ID of the source outlet")
     source_name: str = Field(..., description="Human readable source name")
-    bias: Literal["left", "center", "right", "unknown"]
+    
+    # Bias fields
+    bias: Literal["left", "center", "right", "unknown"] = Field(..., description="Effective bias (fusion of source and article)")
+    bias_source: Optional[Literal["left", "center", "right", "unknown"]] = Field(None, description="Static bias of the source outlet")
+    bias_article: Optional[Literal["left", "center", "right", "unknown"]] = Field(None, description="AI-detected bias of the content")
+    bias_confidence: Optional[float] = Field(None, description="Confidence of the AI classification (0.0-1.0)")
+    bias_explanation: Optional[str] = Field(None, description="Short explanation of the AI classification")
+
     title: str
     snippet: str
     body: Optional[str] = None

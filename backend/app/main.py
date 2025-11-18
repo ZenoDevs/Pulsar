@@ -5,9 +5,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from .clustering import cluster_articles_into_stories
-from .schemas import SearchRequest, SearchResponse, Story
-from .scrapers.news_scrapers import fetch_articles_from_all_sources
+from .schemas import SearchRequest, SearchResponse, Story, Article
+from .scrapers.news_scrapers import fetch_articles_from_all_sources, SOURCE_NAMES, SOURCE_BIAS
 from .services.openai_service import analyze_story_coverage, is_ai_available
+from .db import search_articles_in_db
 
 app = FastAPI(
     title="Pulsar API",
@@ -54,21 +55,71 @@ def health_check() -> dict:
 def process_search_job(job_id: str, query: str, start_date: Optional[str], end_date: Optional[str]):
     try:
         jobs[job_id]["status"] = "processing"
-        jobs[job_id]["message"] = "Scraping and analyzing articles..."
+        jobs[job_id]["message"] = "Searching local DB and external sources..."
         
-        # 1. Fetch articles from all scrapers (includes AI enrichment)
-        articles = fetch_articles_from_all_sources(
+        # 1. Local DB Search (Historical/Cached)
+        local_results = search_articles_in_db(query, start_date, end_date)
+        local_articles = []
+        for r in local_results:
+            try:
+                s_id = r["source_id"]
+                # Fallback for source name/bias if not in map
+                s_name = SOURCE_NAMES.get(s_id, s_id)
+                # Bias from analysis table takes precedence, else from source default
+                bias = r["bias"] if r["bias"] else SOURCE_BIAS.get(s_id, "unknown")
+                
+                a = Article(
+                    id=r["id"],
+                    source_id=s_id,
+                    source_name=s_name,
+                    bias=bias,
+                    bias_source=SOURCE_BIAS.get(s_id, "unknown"),
+                    bias_article=r["bias_article"],
+                    bias_confidence=r["bias_confidence"],
+                    bias_explanation=r["bias_explanation"],
+                    title=r["title"],
+                    snippet=r["snippet"] or "",
+                    body=r["body"],
+                    url=r["url"],
+                    published_at=r["published_at"], 
+                    embedding=r["embedding"]
+                )
+                local_articles.append(a)
+            except Exception as ex:
+                print(f"Error reconstructing article from DB: {ex}")
+                continue
+
+        print(f"Found {len(local_articles)} articles in local DB.")
+
+        # 2. Fetch articles from all sources (Live)
+        # This will also enrich them (scrape body if new, load body from DB if known)
+        live_articles = fetch_articles_from_all_sources(
             query=query,
             start_date=start_date,
             end_date=end_date,
         )
 
-        jobs[job_id]["message"] = f"Clustering {len(articles)} articles..."
+        # 3. Merge Results
+        # We use a dictionary keyed by URL to deduplicate.
+        # Live articles take precedence as they might have fresher metadata or we just want to confirm they are still online.
+        # However, local articles might have bodies that live ones don't if scraping failed? 
+        # Actually fetch_articles_from_all_sources handles the body loading.
         
-        # 2. Cluster articles into stories
-        stories = cluster_articles_into_stories(query, articles)
+        merged_map = {a.url: a for a in local_articles if a.url}
+        
+        for a in live_articles:
+            if a.url:
+                merged_map[a.url] = a
+        
+        # Convert back to list
+        all_articles = list(merged_map.values())
+        
+        jobs[job_id]["message"] = f"Clustering {len(all_articles)} articles..."
+        
+        # 4. Cluster articles into stories
+        stories = cluster_articles_into_stories(query, all_articles)
 
-        # 3. Cache stories for detail view
+        # 5. Cache stories for detail view
         for story in stories:
             stories_cache[story.id] = story
 

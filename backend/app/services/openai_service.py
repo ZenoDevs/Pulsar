@@ -31,24 +31,52 @@ def enrich_article_smart(article):
     cached = get_cached_analysis(article.url)
     if cached:
         article.bias = cached["bias"]
+        article.bias_article = cached.get("bias_article")
+        article.bias_confidence = cached.get("bias_confidence")
+        article.bias_explanation = cached.get("bias_explanation")
         article.embedding = cached["embedding"]
         return article
 
     # Not in cache, compute
     # 1. Bias
-    # Use 'snippet' instead of 'content' as per Article schema
+    # Use body if available, otherwise snippet
     text_content = article.snippet or ""
-    bias = classify_bias(article.title, text_content, article.source_name)
-    article.bias = bias
+    
+    # Call AI classification
+    ai_result = classify_bias(article.title, text_content, article.source_name, article.body)
+    
+    # Store AI results
+    article.bias_article = ai_result["bias"]
+    article.bias_confidence = ai_result["confidence"]
+    article.bias_explanation = ai_result["explanation"]
+    
+    # Fusion Logic (Layer 2)
+    # If confidence is low, fallback to source bias.
+    # If source bias is missing (shouldn't happen), use AI bias.
+    threshold = 0.65
+    
+    if article.bias_confidence < threshold and article.bias_source:
+        article.bias = article.bias_source
+    else:
+        article.bias = article.bias_article
 
-    # 2. Embedding (combine title + content for better context)
-    text_to_embed = f"{article.title} {text_content}"
+    # 2. Embedding (combine title + snippet + part of body)
+    body_part = article.body[:1000] if article.body else ""
+    text_to_embed = f"{article.title} {text_content} {body_part}"
     embedding = get_embedding(text_to_embed)
     article.embedding = embedding
 
     # Save to Cache
     if article.url:
-        cache_analysis(article.url, bias, embedding)
+        # Use the effective bias we just calculated
+        cache_analysis(
+            article.url, 
+            article.bias, 
+            embedding,
+            bias_article=article.bias_article,
+            bias_confidence=article.bias_confidence,
+            bias_explanation=article.bias_explanation
+        )
     
     return article
 
@@ -72,28 +100,39 @@ def get_embedding(text: str) -> Optional[List[float]]:
         print(f"Error fetching embedding: {e}")
         return None
 
-def classify_bias(title: str, snippet: str, source_name: str) -> str:
+def classify_bias(title: str, snippet: str, source_name: str, body: str = None) -> dict:
     """
     Analyze the bias of an article using GPT-4o-mini.
-    Returns one of: 'left', 'center', 'right', 'unknown'.
+    Returns a dict with: 'bias', 'confidence', 'explanation'.
     """
+    default_result = {"bias": "unknown", "confidence": 0.0, "explanation": "Analysis failed"}
+    
     if not client:
-        return "unknown"
+        return default_result
+
+    # Use body if available (truncated), otherwise snippet
+    context_text = body[:2500] if body else snippet
 
     prompt = f"""
-    You are an expert media analyst. Analyze the political bias of the following news article snippet from the Italian press.
+    You are an expert media analyst. Analyze the political bias of the following news article from the Italian press.
     
     Source: {source_name}
     Title: {title}
-    Snippet: {snippet}
+    Content: {context_text}
 
     Determine if the tone and framing are leaning Left, Right, or are Neutral/Center.
     Consider the typical stance of the source but prioritize the specific content provided.
+
+    CRITICAL - Confidence Scoring Rules:
+    - < 0.6: If the text is very short, purely factual (cronaca), or ambiguous.
+    - 0.6 - 0.8: If there is some framing or selective emphasis but no strong opinion.
+    - > 0.8: If there is explicit opinion, strong adjectives, or clear political agenda.
     
     Return ONLY a JSON object with this format:
     {{
         "bias": "left" | "center" | "right" | "unknown",
-        "confidence": float (0.0 to 1.0)
+        "confidence": float (0.0 to 1.0),
+        "explanation": "short natural language explanation in Italian (max 20 words)"
     }}
     """
 
@@ -110,10 +149,14 @@ def classify_bias(title: str, snippet: str, source_name: str) -> str:
         
         content = response.choices[0].message.content
         data = json.loads(content)
-        return data.get("bias", "unknown")
+        return {
+            "bias": data.get("bias", "unknown"),
+            "confidence": data.get("confidence", 0.0),
+            "explanation": data.get("explanation", "")
+        }
     except Exception as e:
         print(f"Error classifying bias: {e}")
-        return "unknown"
+        return default_result
 
 def compute_cosine_similarity(vec1: List[float], vec2: List[float]) -> float:
     """Compute cosine similarity between two vectors."""
@@ -230,7 +273,11 @@ def analyze_story_coverage(articles: List) -> str:
     # Prepare input for AI
     articles_text = ""
     for i, a in enumerate(articles[:15]): # Limit to 15 articles to save context
-        articles_text += f"[{i+1}] Source: {a.source_name} ({a.bias}) | Title: {a.title}\n"
+        # Use body if available (truncated to ~300 chars) to give more substance to the analysis
+        content_preview = (a.body[:300] + "...") if a.body else a.snippet
+        content_preview = content_preview.replace("\n", " ").strip()
+        
+        articles_text += f"[{i+1}] Source: {a.source_name} ({a.bias})\n   Title: {a.title}\n   Excerpt: {content_preview}\n\n"
 
     prompt = f"""
     You are an expert media analyst and neutral observer. Analyze the following set of news articles covering the same event.

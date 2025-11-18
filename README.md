@@ -7,13 +7,21 @@ It aggregates articles from diverse sources (e.g., ANSA, Il Giornale, La Repubbl
 
 ## ✨ Key Features
 
-- **🔍 Multi-Source Search**: Real-time scraping and aggregation from major Italian news outlets.
+- **🔍 Hybrid Search Engine**:
+  - Combines **Live Web Scraping** with a **Local Vector Database**.
+  - Instantly retrieves historical results while fetching fresh news in the background.
+  - **Full-Text Extraction**: Automatically visits article pages to scrape the full body text for deeper analysis.
 - **🧠 AI-Powered Clustering**:
-  - Uses **Hierarchical Agglomerative Clustering (HAC)** on semantic embeddings to group related articles with high precision.
-  - **AI "Chief Editor"**: A GPT-4o based post-processing step that intelligently merges duplicate clusters (e.g., "Tregua a Gaza" vs "Cessate il fuoco").
-- **⚖️ Bias Analysis**:
-  - Automatically detects the political leaning (Left, Center, Right) of every single article using LLMs.
-  - Visualizes the "Bias Distribution" for each story with intuitive color-coded bars and indicators.
+  - Uses **Hierarchical Agglomerative Clustering (HAC)** on semantic embeddings (Title + Snippet + Body) to group related articles with high precision.
+  - **AI "Chief Editor"**: A GPT-4o based post-processing step that intelligently merges duplicate clusters.
+- **⚖️ Advanced Bias Analysis (3-Layer System)**:
+  - **Layer 1 (Source Bias)**: Uses historical reputation as a baseline.
+  - **Layer 2 (AI Analysis)**: GPT-4o-mini analyzes the specific tone and framing of the article text.
+  - **Layer 3 (Fusion Logic)**: A confidence-based system decides whether to trust the AI (if confidence > 65%) or fallback to the source's reputation, preventing hallucinations on neutral news.
+  - **Localized Explanations**: Provides short, context-aware explanations in Italian for _why_ an article is classified a certain way.
+- **⚡ High-Performance Scraping**:
+  - **Parallel Execution**: Scrapers for different sources run concurrently using `ThreadPoolExecutor`, drastically reducing wait times.
+  - **Smart Caching**: Results are cached in SQLite to ensure instant load times for repeated queries.
 - **🤖 Deep Coverage Analysis**:
   - Generates an on-demand **AI Report** for every story.
   - Provides a **Neutral Overview** of the facts.
@@ -43,10 +51,12 @@ It aggregates articles from diverse sources (e.g., ANSA, Il Giornale, La Repubbl
 
 ## 🚀 How It Works
 
-1.  **Search & Scrape**: The user queries a topic. Pulsar activates parallel scrapers to fetch the latest articles from supported Italian newspapers.
-2.  **Enrichment**:
-    - Each article is analyzed by GPT-4o-mini to determine its political bias.
-    - An embedding vector is generated for the article's content.
+1.  **Search & Scrape**: The user queries a topic. Pulsar activates **parallel scrapers** to fetch the latest articles from supported Italian newspapers (ANSA, Il Giornale, La Repubblica) simultaneously.
+2.  **Enrichment & Analysis**:
+    - **Full-Text Scraping**: The system visits the URLs to extract the full content.
+    - **AI Bias Check**: Each article is analyzed for political tone. The system calculates a **confidence score** to filter out noise.
+    - **Vectorization**: An embedding is generated based on the full context.
+    - **Persistence**: Data is saved to a local SQLite database.
 3.  **Clustering (The "Magic Touch")**:
     - Articles are grouped into "Stories" using HAC based on cosine similarity of their embeddings.
     - An AI agent reviews the clusters and merges those referring to the exact same event, ensuring no duplicates.

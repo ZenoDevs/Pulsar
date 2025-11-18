@@ -110,10 +110,82 @@ const StoryDetailPage = () => {
                     <h4 className="article-title">
                       <span
                         className={`bias-dot ${article.bias || "unknown"}`}
-                        title={`Bias: ${article.bias || "unknown"}`}
+                        title={`Bias Effettivo: ${article.bias}\nFonte: ${
+                          article.bias_source
+                        }\nArticolo (AI): ${article.bias_article} (${Math.round(
+                          (article.bias_confidence || 0) * 100
+                        )}%)`}
                       ></span>
                       {article.title}
                     </h4>
+
+                    {article.bias_explanation && (
+                      <div
+                        className="bias-explanation"
+                        style={{
+                          fontSize: "0.85rem",
+                          color: "rgba(255, 255, 255, 0.5)",
+                          marginTop: "0.3rem",
+                          marginBottom: "0.5rem",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "0.2rem",
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "flex-start",
+                            gap: "0.4rem",
+                            fontStyle: "italic",
+                          }}
+                        >
+                          <span style={{ fontSize: "1rem", lineHeight: 1 }}>
+                            🤖
+                          </span>
+                          <span>{article.bias_explanation}</span>
+                        </div>
+                        {article.bias_confidence && (
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "0.5rem",
+                              marginLeft: "1.4rem",
+                            }}
+                          >
+                            <div
+                              style={{
+                                flex: 1,
+                                height: "4px",
+                                background: "rgba(255,255,255,0.1)",
+                                borderRadius: "2px",
+                                maxWidth: "100px",
+                              }}
+                            >
+                              <div
+                                style={{
+                                  width: `${article.bias_confidence * 100}%`,
+                                  height: "100%",
+                                  background:
+                                    article.bias_confidence > 0.8
+                                      ? "#4ade80"
+                                      : article.bias_confidence > 0.5
+                                      ? "#facc15"
+                                      : "#f87171",
+                                  borderRadius: "2px",
+                                }}
+                              ></div>
+                            </div>
+                            <span style={{ fontSize: "0.75rem", opacity: 0.7 }}>
+                              {Math.round(article.bias_confidence * 100)}%
+                              confidence
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     <p className="article-snippet">{article.snippet}</p>
                     <span className="article-date">
                       {article.published_at
