@@ -94,7 +94,12 @@ const SearchPage = ({
             {loading ? "..." : "Cerca"}
           </button>
         </form>
-        {loading && <p className="status-message">{statusMessage}</p>}
+        {loading && (
+          <div className="loader-container" style={{ height: "40vh" }}>
+            <div className="pulsar-loader"></div>
+            <div className="loader-text">{statusMessage}</div>
+          </div>
+        )}
         {error && <p className="error-message">{error}</p>}
       </section>
 
