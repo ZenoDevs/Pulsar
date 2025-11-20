@@ -164,6 +164,9 @@ def search_news(payload: SearchRequest, background_tasks: BackgroundTasks) -> Jo
     Initiates a background search job.
     Returns a job_id to poll for results.
     """
+    # Normalize query: lowercase and strip whitespace to avoid duplicates (e.g. "Palestina" vs "palestina")
+    normalized_query = payload.query.strip().lower()
+    
     job_id = str(uuid.uuid4())
     jobs[job_id] = {
         "status": "pending",
@@ -174,7 +177,7 @@ def search_news(payload: SearchRequest, background_tasks: BackgroundTasks) -> Jo
     background_tasks.add_task(
         process_search_job, 
         job_id, 
-        payload.query, 
+        normalized_query, 
         payload.start_date, 
         payload.end_date
     )
