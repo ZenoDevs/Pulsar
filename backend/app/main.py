@@ -8,7 +8,8 @@ from .clustering import cluster_articles_into_stories
 from .schemas import SearchRequest, SearchResponse, Story, Article
 from .scrapers.news_scrapers import fetch_articles_from_all_sources, SOURCE_NAMES, SOURCE_BIAS
 from .services.openai_service import analyze_story_coverage, is_ai_available
-from .db import search_articles_in_db
+# Switch to ORM implementation
+from .db_orm import search_articles_in_db, get_latest_article_date, save_article
 
 app = FastAPI(
     title="Pulsar API",
@@ -55,13 +56,17 @@ def health_check() -> dict:
 def process_search_job(job_id: str, query: str, start_date: Optional[str], end_date: Optional[str]):
     try:
         jobs[job_id]["status"] = "processing"
-        jobs[job_id]["message"] = "Searching local DB and external sources..."
+        jobs[job_id]["message"] = "Searching database and external sources..."
         
         # 1. Local DB Search (Historical/Cached)
         local_results = search_articles_in_db(query, start_date, end_date)
         local_articles = []
         for r in local_results:
             try:
+                # Update the query tracking for this existing article
+                # We pass the existing data back to save_article, which will append the new query
+                save_article(r, query=query)
+
                 s_id = r["source_id"]
                 # Fallback for source name/bias if not in map
                 s_name = SOURCE_NAMES.get(s_id, s_id)
@@ -91,12 +96,29 @@ def process_search_job(job_id: str, query: str, start_date: Optional[str], end_d
 
         print(f"Found {len(local_articles)} articles in local DB.")
 
+        # Determine scraping strategy (Incremental vs New)
+        scrape_start_date = start_date
+        scrape_max_pages = 2
+        cutoff_date = None
+        
+        if not start_date and not end_date: # Only apply smart logic if user didn't force a specific range
+            last_db_date = get_latest_article_date(query)
+            if last_db_date:
+                print(f"Incremental Search: Found articles up to {last_db_date}. Fetching newer ones.")
+                cutoff_date = last_db_date
+                # We set start_date for scrapers that support it (Repubblica) to optimize
+                scrape_start_date = last_db_date.strftime("%Y-%m-%d")
+            else:
+                print("New Search: Fetching default pages.")
+
         # 2. Fetch articles from all sources (Live)
         # This will also enrich them (scrape body if new, load body from DB if known)
         live_articles = fetch_articles_from_all_sources(
             query=query,
-            start_date=start_date,
+            start_date=scrape_start_date,
             end_date=end_date,
+            max_pages=scrape_max_pages,
+            cutoff_date=cutoff_date
         )
 
         # 3. Merge Results

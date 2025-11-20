@@ -7,3 +7,5 @@ openai
 python-dotenv
 numpy
 scikit-learn
+sqlalchemy
+psycopg2-binary

@@ -19,7 +19,8 @@ from bs4 import BeautifulSoup
 
 from ..schemas import Article
 from ..services.openai_service import is_ai_available, enrich_article_smart
-from ..db import get_article_by_url, save_article
+# Switch to ORM implementation
+from ..db_orm import get_article_by_url, save_article
 
 SOURCE_BIAS = {
     "ansa": "center",
@@ -40,7 +41,7 @@ def _generate_article_id(source_id: str, title: str) -> str:
     return hashlib.md5(raw.encode("utf-8")).hexdigest()
 
 
-def _enrich_article_with_ai(article: Article) -> Article:
+def _enrich_article_with_ai(article: Article, query: str = None) -> Article:
     """
     Full enrichment pipeline:
     1. Check DB for existing body/analysis.
@@ -71,7 +72,21 @@ def _enrich_article_with_ai(article: Article) -> Article:
             "published_at": article.published_at.isoformat() if article.published_at else None,
             "fetched_at": article.fetched_at.isoformat()
         }
-        save_article(article_data)
+        save_article(article_data, query=query)
+    
+    # Also save if we didn't scrape but want to track the query
+    elif article.url and query:
+         article_data = {
+            "id": article.id,
+            "url": article.url,
+            "source_id": article.source_id,
+            "title": article.title,
+            "snippet": article.snippet,
+            "body": article.body,
+            "published_at": article.published_at.isoformat() if article.published_at else None,
+            "fetched_at": article.fetched_at.isoformat()
+        }
+         save_article(article_data, query=query)
 
     # 4. AI Analysis (Bias + Embedding)
     return enrich_article_smart(article)
@@ -91,7 +106,7 @@ def convert_ansa_date(raw_date_str):
         return None
 
 
-def ansaScraper(regex, max_pages=10, start_date=None, end_date=None):
+def ansaScraper(regex, max_pages=10, start_date=None, end_date=None, cutoff_date=None):
     ti = []
     te = []
     d = []
@@ -133,23 +148,55 @@ def ansaScraper(regex, max_pages=10, start_date=None, end_date=None):
             texts = soup.find_all("div", "text")
             dates = soup.find_all("p", "meta")
 
-            for title in titles:
-                ti.append(title.get_text(strip=True))
+            # Circuit Breaker Check
+            found_old_article = False
+            
+            # Temporary lists for this page
+            page_ti = []
+            page_urls = []
+            page_te = []
+            page_d = []
+
+            for i, title in enumerate(titles):
+                # Check date if available
+                if i < len(dates):
+                    date_text = dates[i].get_text(strip=True)
+                    if cutoff_date:
+                        dt = convert_ansa_date(date_text)
+                        if dt and dt <= cutoff_date:
+                            found_old_article = True
+                            # We stop adding articles from this point on
+                            break
+                    page_d.append(date_text)
+                else:
+                    page_d.append("")
+
+                page_ti.append(title.get_text(strip=True))
                 a_tag = title.find("a")
                 if a_tag and a_tag.has_attr("href"):
                     link = a_tag["href"]
                     if link.startswith("/"):
                         link = "https://www.ansa.it" + link
-                    urls.append(link)
+                    page_urls.append(link)
                 else:
-                    urls.append(None)
+                    page_urls.append(None)
 
-            for t in texts:
-                te.append(t.get_text(strip=True))
+            # Handle texts (might not align perfectly if some are missing, but usually they do)
+            for i in range(len(page_ti)):
+                if i < len(texts):
+                    page_te.append(texts[i].get_text(strip=True))
+                else:
+                    page_te.append("")
 
-            for meta in dates:
-                date_text = meta.get_text(strip=True)
-                d.append(date_text)
+            # Append page results to main lists
+            ti.extend(page_ti)
+            urls.extend(page_urls)
+            te.extend(page_te)
+            d.extend(page_d)
+
+            if found_old_article:
+                # print("DEBUG: Reached cutoff date. Stopping scraping.")
+                break
 
             page_number += 12
 
@@ -170,7 +217,7 @@ def ansaScraper(regex, max_pages=10, start_date=None, end_date=None):
         return pd.DataFrame()
 
 
-def giornaleScraper(regex, max_pages=10, start_date=None, end_date=None):  # noqa: ARG001
+def giornaleScraper(regex, max_pages=10, start_date=None, end_date=None, cutoff_date=None):  # noqa: ARG001
     ti = []
     te = []
     d = []
@@ -222,7 +269,7 @@ def giornaleScraper(regex, max_pages=10, start_date=None, end_date=None):  # noq
         return pd.DataFrame()
 
 
-def repubblicaScraper(regex, max_pages=10, start_date=None, end_date=None):
+def repubblicaScraper(regex, max_pages=10, start_date=None, end_date=None, cutoff_date=None):
     ti = []
     te = []
     d = []
@@ -259,6 +306,8 @@ def repubblicaScraper(regex, max_pages=10, start_date=None, end_date=None):
                 soup = BeautifulSoup(response.content, "html.parser")
                 articles = soup.find_all("article")
 
+                found_old_article = False
+
                 for article in articles:
                     # 1. Title & Link
                     header = article.find(["h1", "h2"])
@@ -277,15 +326,26 @@ def repubblicaScraper(regex, max_pages=10, start_date=None, end_date=None):
                         
                     # 2. Date
                     date_val = "No date found"
+                    parsed_dt = None
                     time_tag = article.find("time")
                     if time_tag and time_tag.has_attr("datetime"):
                         date_val = time_tag["datetime"]
+                        try:
+                            parsed_dt = datetime.fromisoformat(date_val)
+                        except:
+                            pass
                     else:
                         # Try to find text looking like a date
                         text_content = article.get_text(" ", strip=True)
                         match = re.search(r"(\d{1,2})\s+(gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)\s+(\d{4})", text_content, re.IGNORECASE)
                         if match:
                             date_val = f"{match.group(1)} {match.group(2)} {match.group(3)}"
+                            # Parsing Italian date string is hard without locale, skipping for now
+                    
+                    # Circuit Breaker
+                    if cutoff_date and parsed_dt and parsed_dt <= cutoff_date:
+                        found_old_article = True
+                        break
 
                     # 3. Snippet
                     snippet_text = ""
@@ -308,6 +368,10 @@ def repubblicaScraper(regex, max_pages=10, start_date=None, end_date=None):
                     urls.append(link_url)
                     d.append(date_val)
                     te.append(snippet_text)
+                
+                if found_old_article:
+                    break
+
             else:
                 break
 
@@ -332,6 +396,7 @@ def fetch_articles_from_all_sources(
     end_date: Optional[str] = None,
     max_pages: int = 2,
     enrich_with_ai: bool = True,
+    cutoff_date: Optional[datetime] = None,
 ) -> List[Article]:
     """Run all news scrapers in parallel and return a unified list of Article objects."""
 
@@ -340,7 +405,7 @@ def fetch_articles_from_all_sources(
     def scrape_ansa_wrapper():
         results = []
         try:
-            df_ansa = ansaScraper(query, max_pages=max_pages, start_date=start_date, end_date=end_date)
+            df_ansa = ansaScraper(query, max_pages=max_pages, start_date=start_date, end_date=end_date, cutoff_date=cutoff_date)
             if not df_ansa.empty:
                 source_id = "ansa"
                 for _, row in df_ansa.iterrows():
@@ -351,6 +416,10 @@ def fetch_articles_from_all_sources(
                         parsed_date = row["Date"]
                     else:
                         raw_date = str(row.get("Date")) if row.get("Date") is not None else None
+
+                    # Double check cutoff (in case scraper didn't filter perfectly)
+                    if cutoff_date and parsed_date and parsed_date <= cutoff_date:
+                        continue
 
                     title = str(row.get("Title", ""))
                     results.append(
@@ -374,12 +443,17 @@ def fetch_articles_from_all_sources(
     def scrape_giornale_wrapper():
         results = []
         try:
-            df_giornale = giornaleScraper(query, max_pages=max_pages, start_date=start_date, end_date=end_date)
+            df_giornale = giornaleScraper(query, max_pages=max_pages, start_date=start_date, end_date=end_date, cutoff_date=cutoff_date)
             if not df_giornale.empty:
                 source_id = "il_giornale"
                 for _, row in df_giornale.iterrows():
                     raw_date = str(row.get("Date")) if row.get("Date") is not None else None
                     title = str(row.get("Title", ""))
+                    
+                    # Try to parse date for filtering
+                    parsed_date = None
+                    # (Date parsing logic for Giornale is weak, so we rely on scraper's best effort or skip filter here)
+                    
                     results.append(
                         Article(
                             id=_generate_article_id(source_id, title),
@@ -401,7 +475,7 @@ def fetch_articles_from_all_sources(
     def scrape_repubblica_wrapper():
         results = []
         try:
-            df_rep = repubblicaScraper(query, max_pages=max_pages, start_date=start_date, end_date=end_date)
+            df_rep = repubblicaScraper(query, max_pages=max_pages, start_date=start_date, end_date=end_date, cutoff_date=cutoff_date)
             if not df_rep.empty:
                 source_id = "la_repubblica"
                 for _, row in df_rep.iterrows():
@@ -411,9 +485,22 @@ def fetch_articles_from_all_sources(
                     parsed_date = None
                     try:
                         if raw_date and raw_date != "No date found":
-                            parsed_date = datetime.fromisoformat(raw_date.replace("Z", "+00:00"))
+                            # Repubblica scraper now returns cleaner dates or we parse them here
+                            # The scraper returns strings like "2023-10-27" or ISO
+                            # Let's try standard parsing
+                            if "T" in raw_date:
+                                parsed_date = datetime.fromisoformat(raw_date.replace("Z", "+00:00"))
+                            else:
+                                # Try simple YYYY-MM-DD
+                                try:
+                                    parsed_date = datetime.strptime(raw_date, "%Y-%m-%d")
+                                except:
+                                    pass
                     except Exception:
                         parsed_date = None
+
+                    if cutoff_date and parsed_date and parsed_date <= cutoff_date:
+                        continue
 
                     results.append(
                         Article(
@@ -450,9 +537,14 @@ def fetch_articles_from_all_sources(
     # If AI is available, we process articles in parallel to update their bias
     if enrich_with_ai and is_ai_available() and articles:
         print(f"Enriching {len(articles)} articles with AI analysis...")
+        
+        # Create a partial function or lambda to pass the query
+        from functools import partial
+        enrich_func = partial(_enrich_article_with_ai, query=query)
+        
         with ThreadPoolExecutor(max_workers=5) as executor:
             # Map returns an iterator, we force it to list to execute
-            articles = list(executor.map(_enrich_article_with_ai, articles))
+            articles = list(executor.map(enrich_func, articles))
 
     return articles
 

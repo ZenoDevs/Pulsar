@@ -21,11 +21,15 @@ It aggregates articles from diverse sources (e.g., ANSA, Il Giornale, La Repubbl
   - **Localized Explanations**: Provides short, context-aware explanations in Italian for _why_ an article is classified a certain way.
 - **⚡ High-Performance Scraping**:
   - **Parallel Execution**: Scrapers for different sources run concurrently using `ThreadPoolExecutor`, drastically reducing wait times.
-  - **Smart Caching**: Results are cached in SQLite to ensure instant load times for repeated queries.
+  - **Smart Fetching (Incremental)**: Checks the database for the latest article date and only fetches newer content, saving bandwidth and time.
+  - **Circuit Breaker**: Automatically stops scraping a source if it encounters old articles, preventing unnecessary requests.
 - **🤖 Deep Coverage Analysis**:
   - Generates an on-demand **AI Report** for every story.
   - Provides a **Neutral Overview** of the facts.
   - Analyzes **Editorial Framing**, explaining _why_ and _how_ sources differ in their coverage, citing specific headlines.
+- **📊 Query Tracking**:
+  - Automatically tags articles with the search queries that found them.
+  - Improves search relevance over time by associating historical articles with new user keywords.
 - **💎 Liquid Glass UI**: A modern, responsive interface featuring glassmorphism, smooth animations, and a "Pulsar" loader.
 
 ## 🛠️ Tech Stack
@@ -33,6 +37,7 @@ It aggregates articles from diverse sources (e.g., ANSA, Il Giornale, La Repubbl
 ### Backend (`/backend`)
 
 - **Framework**: [FastAPI](https://fastapi.tiangolo.com/) (Python 3.12+)
+- **Database**: **PostgreSQL** (via **Supabase**) managed with **SQLAlchemy ORM**.
 - **AI & NLP**:
   - **OpenAI API** (GPT-4o-mini, text-embedding-3-small) for embeddings, bias detection, and summarization.
   - **Scikit-learn** & **NumPy** for vector math and clustering algorithms.
@@ -40,7 +45,6 @@ It aggregates articles from diverse sources (e.g., ANSA, Il Giornale, La Repubbl
   - Custom scrapers using `BeautifulSoup4` and `Requests`.
   - `Pandas` for data manipulation.
   - Background tasks for non-blocking search operations.
-- **Caching**: SQLite / In-memory caching to minimize API costs and latency.
 
 ### Frontend (`/frontend`)
 
@@ -56,7 +60,7 @@ It aggregates articles from diverse sources (e.g., ANSA, Il Giornale, La Repubbl
     - **Full-Text Scraping**: The system visits the URLs to extract the full content.
     - **AI Bias Check**: Each article is analyzed for political tone. The system calculates a **confidence score** to filter out noise.
     - **Vectorization**: An embedding is generated based on the full context.
-    - **Persistence**: Data is saved to a local SQLite database.
+    - **Persistence**: Data is saved to a cloud **PostgreSQL** database (Supabase) for persistence and future vector search capabilities.
 3.  **Clustering (The "Magic Touch")**:
     - Articles are grouped into "Stories" using HAC based on cosine similarity of their embeddings.
     - An AI agent reviews the clusters and merges those referring to the exact same event, ensuring no duplicates.
@@ -73,6 +77,7 @@ It aggregates articles from diverse sources (e.g., ANSA, Il Giornale, La Repubbl
 - Python 3.10+
 - Node.js 18+
 - An OpenAI API Key
+- A Supabase Project (PostgreSQL)
 
 ### 1. Backend Setup
 
@@ -94,6 +99,7 @@ pip install -r requirements.txt
 # Configure Environment
 # Create a .env file in /backend and add:
 # OPENAI_API_KEY=sk-your-key-here
+# DATABASE_URL=postgresql://user:password@host:port/postgres (Use Session Pooler port 5432 or 6543)
 
 # Run Server
 uvicorn app.main:app --reload

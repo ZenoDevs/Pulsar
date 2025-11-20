@@ -4,7 +4,8 @@ from typing import List, Optional
 import numpy as np
 from openai import OpenAI
 from dotenv import load_dotenv
-from ..db import get_cached_analysis, cache_analysis
+# Switch to ORM implementation
+from ..db_orm import get_cached_analysis, cache_analysis
 
 # Load environment variables from .env file
 load_dotenv()
