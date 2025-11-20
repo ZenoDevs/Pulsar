@@ -2,8 +2,8 @@ import os
 import json
 from datetime import datetime
 from typing import Optional, List
-from sqlalchemy import create_engine, Column, String, Float, DateTime, Text, JSON, func, or_
-from sqlalchemy.orm import sessionmaker, declarative_base, Session
+from sqlalchemy import create_engine, Column, String, Float, DateTime, Text, JSON, func, or_, Integer, ForeignKey, Table
+from sqlalchemy.orm import sessionmaker, declarative_base, Session, relationship
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -19,6 +19,23 @@ if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
 Base = declarative_base()
 
 # --- Models ---
+
+# Association Table for Many-to-Many relationship between Articles and SearchQueries
+article_search_query_association = Table(
+    'article_search_query', Base.metadata,
+    Column('article_id', String, ForeignKey('articles.id')),
+    Column('search_query_id', Integer, ForeignKey('search_queries.id'))
+)
+
+class SearchQuery(Base):
+    __tablename__ = "search_queries"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    text = Column(String, unique=True, index=True)
+    count = Column(Integer, default=1)
+    last_searched_at = Column(DateTime, default=datetime.utcnow)
+    
+    articles = relationship("ArticleModel", secondary=article_search_query_association, back_populates="queries")
 
 class ArticleModel(Base):
     __tablename__ = "articles"
@@ -39,8 +56,11 @@ class ArticleModel(Base):
     bias_explanation = Column(Text, nullable=True)
     embedding = Column(JSON, nullable=True) # In Postgres this will be VECTOR type later
     
-    # Track which queries found this article
+    # Legacy JSON column (kept for backward compatibility during migration, but we will stop writing to it eventually)
     search_queries = Column(JSON, default=list)
+    
+    # New Relationship
+    queries = relationship("SearchQuery", secondary=article_search_query_association, back_populates="articles")
 
 # --- Database Connection ---
 
@@ -63,78 +83,60 @@ def get_db():
         db.close()
 
 # --- Data Access Layer (DAL) ---
-# Funzioni helper per mantenere compatibilità col vecchio codice senza riscrivere tutto subito
+# Refactored to accept db session explicitly
 
-def get_cached_analysis(url: str):
+def get_cached_analysis(db: Session, url: str):
     """
-    Legacy helper: retrieves analysis data.
-    Now queries the main ArticleModel since we merged tables conceptually.
+    Retrieves analysis data using the provided session.
     """
-    session = SessionLocal()
-    try:
-        article = session.query(ArticleModel).filter(ArticleModel.url == url).first()
-        if article and article.bias:
-            return {
-                "bias": article.bias,
-                "bias_article": article.bias_article,
-                "bias_confidence": article.bias_confidence,
-                "bias_explanation": article.bias_explanation,
-                "embedding": article.embedding
-            }
-        return None
-    finally:
-        session.close()
+    article = db.query(ArticleModel).filter(ArticleModel.url == url).first()
+    if article and article.bias:
+        return {
+            "bias": article.bias,
+            "bias_article": article.bias_article,
+            "bias_confidence": article.bias_confidence,
+            "bias_explanation": article.bias_explanation,
+            "embedding": article.embedding
+        }
+    return None
 
-def cache_analysis(url: str, bias: str, embedding: list, bias_article: str = None, bias_confidence: float = None, bias_explanation: str = None):
+def cache_analysis(db: Session, url: str, bias: str, embedding: list, bias_article: str = None, bias_confidence: float = None, bias_explanation: str = None):
     """
-    Legacy helper: updates an existing article with analysis data.
+    Updates an existing article with analysis data using the provided session.
     """
-    session = SessionLocal()
     try:
-        article = session.query(ArticleModel).filter(ArticleModel.url == url).first()
+        article = db.query(ArticleModel).filter(ArticleModel.url == url).first()
         if article:
             article.bias = bias
             article.bias_article = bias_article
             article.bias_confidence = bias_confidence
             article.bias_explanation = bias_explanation
             article.embedding = embedding
-            session.commit()
-        else:
-            # If article doesn't exist yet (rare edge case in current flow), create partial
-            # But usually we save article first.
-            pass 
+            db.commit()
     except Exception as e:
         print(f"DB Error caching analysis: {e}")
-        session.rollback()
-    finally:
-        session.close()
+        db.rollback()
 
-def get_article_by_url(url: str):
-    session = SessionLocal()
-    try:
-        article = session.query(ArticleModel).filter(ArticleModel.url == url).first()
-        if article:
-            # Convert to dict to match old API expectation
-            return {
-                "id": article.id,
-                "url": article.url,
-                "source_id": article.source_id,
-                "title": article.title,
-                "snippet": article.snippet,
-                "body": article.body,
-                "published_at": article.published_at,
-                "fetched_at": article.fetched_at,
-                "bias": article.bias
-            }
-        return None
-    finally:
-        session.close()
+def get_article_by_url(db: Session, url: str):
+    article = db.query(ArticleModel).filter(ArticleModel.url == url).first()
+    if article:
+        return {
+            "id": article.id,
+            "url": article.url,
+            "source_id": article.source_id,
+            "title": article.title,
+            "snippet": article.snippet,
+            "body": article.body,
+            "published_at": article.published_at,
+            "fetched_at": article.fetched_at,
+            "bias": article.bias
+        }
+    return None
 
-def save_article(article_data: dict, query: str = None):
-    session = SessionLocal()
+def save_article(db: Session, article_data: dict, query: str = None):
     try:
         # Check if exists
-        article = session.query(ArticleModel).filter(ArticleModel.url == article_data["url"]).first()
+        article = db.query(ArticleModel).filter(ArticleModel.url == article_data["url"]).first()
         
         # Parse date if string
         pub_at = article_data.get("published_at")
@@ -151,7 +153,7 @@ def save_article(article_data: dict, query: str = None):
             article.body = article_data["body"]
             article.published_at = pub_at
             
-            # Update search queries list
+            # Update search queries list (Legacy JSON)
             if query:
                 current_queries = list(article.search_queries) if article.search_queries else []
                 if query not in current_queries:
@@ -171,73 +173,78 @@ def save_article(article_data: dict, query: str = None):
                 fetched_at=datetime.utcnow(),
                 search_queries=initial_queries
             )
-            session.add(article)
+            db.add(article)
         
-        session.commit()
+        # --- New Relational Logic ---
+        if query:
+            # 1. Get or Create SearchQuery
+            search_query_obj = db.query(SearchQuery).filter(SearchQuery.text == query).first()
+            if not search_query_obj:
+                search_query_obj = SearchQuery(text=query, count=1, last_searched_at=datetime.utcnow())
+                db.add(search_query_obj)
+            else:
+                search_query_obj.count += 1
+                search_query_obj.last_searched_at = datetime.utcnow()
+            
+            # 2. Link to Article if not already linked
+            if search_query_obj not in article.queries:
+                article.queries.append(search_query_obj)
+
+        db.commit()
     except Exception as e:
         print(f"DB Error saving article: {e}")
-        session.rollback()
-    finally:
-        session.close()
+        db.rollback()
 
-def search_articles_in_db(query: str, start_date: str = None, end_date: str = None):
-    session = SessionLocal()
-    try:
-        # Search in Title OR Snippet (Smart Search)
-        search_filter = or_(
-            ArticleModel.title.ilike(f"%{query}%"),
-            ArticleModel.snippet.ilike(f"%{query}%")
-        )
+def search_articles_in_db(db: Session, query: str, start_date: str = None, end_date: str = None):
+    # Search in Title OR Snippet (Smart Search)
+    search_filter = or_(
+        ArticleModel.title.ilike(f"%{query}%"),
+        ArticleModel.snippet.ilike(f"%{query}%")
+    )
+    
+    q = db.query(ArticleModel).filter(search_filter)
+    
+    if start_date:
+        try:
+            sd = datetime.fromisoformat(start_date)
+            q = q.filter(ArticleModel.published_at >= sd)
+        except: pass
         
-        q = session.query(ArticleModel).filter(search_filter)
+    if end_date:
+        try:
+            ed = datetime.fromisoformat(end_date)
+            q = q.filter(ArticleModel.published_at <= ed)
+        except: pass
         
-        if start_date:
-            try:
-                sd = datetime.fromisoformat(start_date)
-                q = q.filter(ArticleModel.published_at >= sd)
-            except: pass
-            
-        if end_date:
-            try:
-                ed = datetime.fromisoformat(end_date)
-                q = q.filter(ArticleModel.published_at <= ed)
-            except: pass
-            
-        # Order by newest
-        results = q.order_by(ArticleModel.published_at.desc()).limit(500).all()
-        
-        # Convert to list of dicts
-        out = []
-        for r in results:
-            out.append({
-                "id": r.id,
-                "url": r.url,
-                "source_id": r.source_id,
-                "title": r.title,
-                "snippet": r.snippet,
-                "body": r.body,
-                "published_at": r.published_at,
-                "bias": r.bias,
-                "bias_article": r.bias_article,
-                "bias_confidence": r.bias_confidence,
-                "bias_explanation": r.bias_explanation,
-                "embedding": r.embedding
-            })
-        return out
-    finally:
-        session.close()
+    # Order by newest
+    results = q.order_by(ArticleModel.published_at.desc()).limit(500).all()
+    
+    # Convert to list of dicts
+    out = []
+    for r in results:
+        out.append({
+            "id": r.id,
+            "url": r.url,
+            "source_id": r.source_id,
+            "title": r.title,
+            "snippet": r.snippet,
+            "body": r.body,
+            "published_at": r.published_at,
+            "bias": r.bias,
+            "bias_article": r.bias_article,
+            "bias_confidence": r.bias_confidence,
+            "bias_explanation": r.bias_explanation,
+            "embedding": r.embedding
+        })
+    return out
 
-def get_latest_article_date(query: str) -> Optional[datetime]:
-    session = SessionLocal()
-    try:
-        search_filter = or_(
-            ArticleModel.title.ilike(f"%{query}%"),
-            ArticleModel.snippet.ilike(f"%{query}%")
-        )
-        latest = session.query(func.max(ArticleModel.published_at)).filter(search_filter).scalar()
-        return latest
-    finally:
-        session.close()
+def get_latest_article_date(db: Session, query: str) -> Optional[datetime]:
+    search_filter = or_(
+        ArticleModel.title.ilike(f"%{query}%"),
+        ArticleModel.snippet.ilike(f"%{query}%")
+    )
+    latest = db.query(func.max(ArticleModel.published_at)).filter(search_filter).scalar()
+    return latest
 
 # Initialize DB
 init_db()

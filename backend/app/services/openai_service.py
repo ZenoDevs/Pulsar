@@ -6,6 +6,7 @@ from openai import OpenAI
 from dotenv import load_dotenv
 # Switch to ORM implementation
 from ..db_orm import get_cached_analysis, cache_analysis
+from sqlalchemy.orm import Session
 
 # Load environment variables from .env file
 load_dotenv()
@@ -20,7 +21,7 @@ def is_ai_available() -> bool:
     """Check if OpenAI API key is configured."""
     return client is not None
 
-def enrich_article_smart(article):
+def enrich_article_smart(article, db: Session):
     """
     Enrich article with Bias and Embedding, using Cache if available.
     Modifies the article object in place.
@@ -29,7 +30,7 @@ def enrich_article_smart(article):
         return article
 
     # Check Cache
-    cached = get_cached_analysis(article.url)
+    cached = get_cached_analysis(db, article.url)
     if cached:
         article.bias = cached["bias"]
         article.bias_article = cached.get("bias_article")
@@ -71,6 +72,7 @@ def enrich_article_smart(article):
     if article.url:
         # Use the effective bias we just calculated
         cache_analysis(
+            db,
             article.url, 
             article.bias, 
             embedding,

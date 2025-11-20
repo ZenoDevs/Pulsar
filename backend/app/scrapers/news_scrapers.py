@@ -20,7 +20,7 @@ from bs4 import BeautifulSoup
 from ..schemas import Article
 from ..services.openai_service import is_ai_available, enrich_article_smart
 # Switch to ORM implementation
-from ..db_orm import get_article_by_url, save_article
+from ..db_orm import get_article_by_url, save_article, SessionLocal
 
 SOURCE_BIAS = {
     "ansa": "center",
@@ -49,47 +49,49 @@ def _enrich_article_with_ai(article: Article, query: str = None) -> Article:
     3. Save/Update DB.
     4. Run AI analysis (Bias/Embedding) using full context.
     """
-    # 1. Check DB for existing body
-    if article.url:
-        existing = get_article_by_url(article.url)
-        if existing and existing.get("body"):
-            article.body = existing["body"]
-    
-    # 2. Scrape if needed (and if we have a URL)
-    if not article.body and article.url:
-        # print(f"Scraping full text for: {article.title[:30]}...")
-        article.body = scrape_full_text(article.url)
+    # Create a dedicated session for this thread
+    with SessionLocal() as db:
+        # 1. Check DB for existing body
+        if article.url:
+            existing = get_article_by_url(db, article.url)
+            if existing and existing.get("body"):
+                article.body = existing["body"]
         
-        # 3. Save to DB
-        # Prepare dict for DB
-        article_data = {
-            "id": article.id,
-            "url": article.url,
-            "source_id": article.source_id,
-            "title": article.title,
-            "snippet": article.snippet,
-            "body": article.body,
-            "published_at": article.published_at.isoformat() if article.published_at else None,
-            "fetched_at": article.fetched_at.isoformat()
-        }
-        save_article(article_data, query=query)
-    
-    # Also save if we didn't scrape but want to track the query
-    elif article.url and query:
-         article_data = {
-            "id": article.id,
-            "url": article.url,
-            "source_id": article.source_id,
-            "title": article.title,
-            "snippet": article.snippet,
-            "body": article.body,
-            "published_at": article.published_at.isoformat() if article.published_at else None,
-            "fetched_at": article.fetched_at.isoformat()
-        }
-         save_article(article_data, query=query)
+        # 2. Scrape if needed (and if we have a URL)
+        if not article.body and article.url:
+            # print(f"Scraping full text for: {article.title[:30]}...")
+            article.body = scrape_full_text(article.url)
+            
+            # 3. Save to DB
+            # Prepare dict for DB
+            article_data = {
+                "id": article.id,
+                "url": article.url,
+                "source_id": article.source_id,
+                "title": article.title,
+                "snippet": article.snippet,
+                "body": article.body,
+                "published_at": article.published_at.isoformat() if article.published_at else None,
+                "fetched_at": article.fetched_at.isoformat()
+            }
+            save_article(db, article_data, query=query)
+        
+        # Also save if we didn't scrape but want to track the query
+        elif article.url and query:
+             article_data = {
+                "id": article.id,
+                "url": article.url,
+                "source_id": article.source_id,
+                "title": article.title,
+                "snippet": article.snippet,
+                "body": article.body,
+                "published_at": article.published_at.isoformat() if article.published_at else None,
+                "fetched_at": article.fetched_at.isoformat()
+            }
+             save_article(db, article_data, query=query)
 
-    # 4. AI Analysis (Bias + Embedding)
-    return enrich_article_smart(article)
+        # 4. AI Analysis (Bias + Embedding)
+        return enrich_article_smart(article, db=db)
 
 
 def convert_ansa_date(raw_date_str):
