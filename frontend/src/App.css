@@ -35,8 +35,8 @@ a {
 
 /* Layout */
 .app-container {
-  width: 100%;
-  max-width: 1200px;
+  width: 95%;
+  max-width: 1920px; /* Increased from 1200px for better large screen support */
   margin: 0 auto;
   padding: 2rem;
   box-sizing: border-box;
@@ -141,8 +141,10 @@ a {
 /* Stories Grid */
 .stories-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  /* Reduced min-width slightly to allow more columns on standard laptops */
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   gap: 2rem;
+  width: 100%;
 }
 
 /* Story Card - Liquid Glass Style */
