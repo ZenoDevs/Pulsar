@@ -17,10 +17,10 @@ import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 
-from ..schemas import Article
-from ..services.openai_service import is_ai_available, enrich_article_smart
+from ...domain import Article
+from ..clients.openai import is_ai_available, enrich_article_smart
 # Switch to ORM implementation
-from ..db_orm import get_article_by_url, save_article, SessionLocal
+from ...db.orm import get_article_by_url, save_article, SessionLocal
 
 SOURCE_BIAS = {
     "ansa": "center",
@@ -698,4 +698,3 @@ def scrape_full_text(url: str) -> str:
     except Exception as e:
         print(f"Error scraping full text for {url}: {e}")
         return ""
-

@@ -4,9 +4,10 @@ from typing import List, Optional
 import numpy as np
 from openai import OpenAI
 from dotenv import load_dotenv
-# Switch to ORM implementation
-from ..db_orm import get_cached_analysis, cache_analysis
 from sqlalchemy.orm import Session
+
+from ...db.orm import get_cached_analysis, cache_analysis
+from ...core.config import settings
 
 # Load environment variables from .env file
 load_dotenv()
@@ -14,7 +15,7 @@ load_dotenv()
 client = None
 api_key = os.getenv("OPENAI_API_KEY")
 
-if api_key:
+if settings.ai.enabled and api_key:
     client = OpenAI(api_key=api_key)
 
 def is_ai_available() -> bool:
@@ -161,28 +162,30 @@ def classify_bias(title: str, snippet: str, source_name: str, body: str = None) 
         print(f"Error classifying bias: {e}")
         return default_result
 
-def compute_cosine_similarity(vec1: List[float], vec2: List[float]) -> float:
-    """Compute cosine similarity between two vectors."""
-    if not vec1 or not vec2:
-        return 0.0
+# ? is this used anywhere ?
+# def compute_cosine_similarity(vec1: List[float], vec2: List[float]) -> float:
+#     """Compute cosine similarity between two vectors."""
+#     if not vec1 or not vec2:
+#         return 0.0
     
-    v1 = np.array(vec1)
-    v2 = np.array(vec2)
+#     v1 = np.array(vec1)
+#     v2 = np.array(vec2)
     
-    norm1 = np.linalg.norm(v1)
-    norm2 = np.linalg.norm(v2)
+#     norm1 = np.linalg.norm(v1)
+#     norm2 = np.linalg.norm(v2)
     
-    if norm1 == 0 or norm2 == 0:
-        return 0.0
+#     if norm1 == 0 or norm2 == 0:
+#         return 0.0
         
-    return float(np.dot(v1, v2) / (norm1 * norm2))
+#     return float(np.dot(v1, v2) / (norm1 * norm2))
 
-def generate_story_title(titles: List[str]) -> str:
+
+def generate_cluster_title(titles: List[str]) -> str:
     """
     Generate a representative title for a cluster of articles.
     """
     if not client or not titles:
-        return titles[0] if titles else "Nuova Storia"
+        return titles[0] if titles else "Nuovo Cluster"
 
     # Limit to first 10 titles to save tokens, usually enough to get the gist
     titles_text = "\n".join(f"- {t}" for t in titles[:10])
@@ -263,9 +266,9 @@ def check_clusters_merge(clusters_data: List[dict]) -> List[List[int]]:
         print(f"Error checking merges: {e}")
         return []
 
-def analyze_story_coverage(articles: List) -> str:
+def analyze_cluster_coverage(articles: List) -> str:
     """
-    Generate a comprehensive analysis of the story coverage.
+    Generate a comprehensive analysis of the cluster coverage.
     Includes:
     1. Why certain sources might be biased (citing specific articles).
     2. A neutral overview of the event.

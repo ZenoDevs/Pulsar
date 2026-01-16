@@ -7,22 +7,22 @@ from typing import List, Set, Dict
 import numpy as np
 from sklearn.cluster import AgglomerativeClustering
 
-from .schemas import Article, Story, StoryStats
-from .services.openai_service import (
+from ..domain import Article, Cluster, ClusterStats
+from ..infrastructure.clients.openai import (
     is_ai_available, 
-    compute_cosine_similarity, 
-    generate_story_title,
+    generate_cluster_title,
     check_clusters_merge
 )
 
 
 def _normalize_text(text: str) -> Set[str]:
-    """Convert text to a set of lowercase words, removing punctuation."""
+    """Convert text to a set of lowercase words, removing punctuation and stop words."""
     text = text.lower()
     # Remove punctuation
     text = re.sub(r"[^\w\s]", "", text)
     words = text.split()
     # Basic stop words for Italian (very minimal list for MVP)
+    # TODO: Expand this list or use a library for better stop word removal
     stopwords = {
         "il", "lo", "la", "i", "gli", "le", "un", "uno", "una", "di", "a", "da",
         "in", "con", "su", "per", "tra", "fra", "e", "o", "ma", "se", "che",
@@ -42,7 +42,7 @@ def _jaccard_similarity(set1: Set[str], set2: Set[str]) -> float:
     return intersection / union
 
 
-def _compute_stats(articles: List[Article]) -> StoryStats:
+def _compute_stats(articles: List[Article]) -> ClusterStats:
     total = len(articles)
     by_bias = Counter(a.bias for a in articles)
     by_source = Counter(a.source_id for a in articles)
@@ -56,7 +56,7 @@ def _compute_stats(articles: List[Article]) -> StoryStats:
     final_bias = {"left": 0, "center": 0, "right": 0, "unknown": 0}
     final_bias.update(by_bias)
 
-    return StoryStats(
+    return ClusterStats(
         total_articles=total,
         by_bias=final_bias,
         by_source=dict(by_source),
@@ -65,7 +65,7 @@ def _compute_stats(articles: List[Article]) -> StoryStats:
     )
 
 
-def cluster_articles_into_stories(query: str, articles: List[Article]) -> List[Story]:
+def cluster_articles(query: str, articles: List[Article]) -> List[Cluster]:
     """
     Group articles into stories using Hierarchical Agglomerative Clustering (HAC)
     and AI-powered merging for high precision.
@@ -170,37 +170,37 @@ def cluster_articles_into_stories(query: str, articles: List[Article]) -> List[S
             
             clusters = list(new_clusters_map.values())
 
-    # --- PHASE 3: Story Object Creation ---
+    # --- PHASE 3: Cluster Object Creation ---
 
-    stories: List[Story] = []
+    result: List[Cluster] = []
 
-    for cluster in clusters:
+    for cluster_articles in clusters:
         # Sort articles by date (newest first)
-        cluster.sort(key=lambda a: a.published_at or datetime.min, reverse=True)
+        cluster_articles.sort(key=lambda a: a.published_at or datetime.min, reverse=True)
 
         # Generate AI Title if cluster is significant
-        story_title = cluster[0].title
-        if use_ai and len(cluster) > 1:
-             titles = [a.title for a in cluster]
-             story_title = generate_story_title(titles)
+        cluster_title = cluster_articles[0].title
+        if use_ai and len(cluster_articles) > 1:
+             titles = [a.title for a in cluster_articles]
+             cluster_title = generate_cluster_title(titles)
 
-        stats = _compute_stats(cluster)
-        story_id = str(uuid.uuid4())
+        stats = _compute_stats(cluster_articles)
+        cluster_id = str(uuid.uuid4())
 
-        stories.append(
-            Story(
-                id=story_id,
+        result.append(
+            Cluster(
+                id=cluster_id,
                 query=query,
-                title=story_title,
-                articles=cluster,
+                title=cluster_title,
+                articles=cluster_articles,
                 stats=stats,
             )
         )
 
-    # Sort stories by total articles (hotness)
-    stories.sort(key=lambda s: s.stats.total_articles, reverse=True)
+    # Sort clusters by total articles (hotness)
+    result.sort(key=lambda c: c.stats.total_articles, reverse=True)
 
-    return stories
+    return result
 
 
 def _fallback_jaccard_clustering(articles: List[Article]) -> List[List[Article]]:

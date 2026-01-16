@@ -2,9 +2,9 @@ import os
 import json
 from datetime import datetime
 from typing import Optional, List
-from sqlalchemy import create_engine, Column, String, Float, DateTime, Text, JSON, func, or_, Integer, ForeignKey, Table
-from sqlalchemy.orm import sessionmaker, declarative_base, Session, relationship
-from dotenv import load_dotenv
+from sqlalchemy import create_engine, Column, String, Float, DateTime, Text, JSON, func, or_, Integer, ForeignKey, Table 
+from sqlalchemy.orm import sessionmaker, declarative_base, Session, relationship 
+from dotenv import load_dotenv 
 
 load_dotenv()
 
