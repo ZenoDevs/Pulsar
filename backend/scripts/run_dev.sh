@@ -25,4 +25,3 @@ pip install -r requirements.txt
 # Avvia il server di sviluppo
 echo "🚀 Starting development server..."
 python -m uvicorn pulsar.main:app --reload --host 0.0.0.0 --port 8000 --app-dir src
-
