@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Header } from './Header'
+import { Header } from './header'
 import { Footer } from './Footer'
 
 interface LayoutProps {
@@ -19,7 +19,7 @@ export function Layout({ children }: LayoutProps) {
 
       <Header />
 
-      <main className="flex-1 relative z-10 pt-16 md:pt-20">
+      <main className="flex-1 relative z-10">
         {children}
       </main>
 

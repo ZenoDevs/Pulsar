@@ -75,10 +75,10 @@ function Router() {
 function AboutPage() {
   return (
     <div className="container-narrow py-16">
-      <h1 className="heading-display text-4xl md:text-5xl text-[var(--color-text-primary)] mb-6">
+      <h1 className="heading-display text-4xl md:text-5xl text-text-primary mb-6">
         About Pulsar
       </h1>
-      <div className="body-text text-[var(--color-text-secondary)] space-y-6">
+      <div className="body-text text-text-secondary space-y-6">
         <p>
           Pulsar was founded on a simple belief: in an era of information overload and increasing
           polarization, what people need most is transparency, not curation.
@@ -93,7 +93,7 @@ function AboutPage() {
           electromagnetic radiation. Like these cosmic lighthouses, we aim to be a consistent,
           reliable beacon cutting through the darkness of misinformation and bias.
         </p>
-        <h2 className="heading-sans text-2xl text-[var(--color-text-primary)] pt-4">
+        <h2 className="heading-sans text-2xl text-text-primary pt-4">
           Our Principles
         </h2>
         <ul className="list-disc pl-6 space-y-2">
