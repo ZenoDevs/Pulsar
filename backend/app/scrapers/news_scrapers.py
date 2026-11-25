@@ -22,17 +22,7 @@ from ..services.openai_service import is_ai_available, enrich_article_smart
 # Switch to ORM implementation
 from ..db_orm import get_article_by_url, save_article, SessionLocal
 
-SOURCE_BIAS = {
-    "ansa": "center",
-    "il_giornale": "right",
-    "la_repubblica": "left",
-}
-
-SOURCE_NAMES = {
-    "ansa": "ANSA",
-    "il_giornale": "Il Giornale",
-    "la_repubblica": "La Repubblica",
-}
+from ..sources import SOURCE_BIAS, SOURCE_NAMES  # noqa: E402
 
 
 def _generate_article_id(source_id: str, title: str) -> str:

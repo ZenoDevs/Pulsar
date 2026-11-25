@@ -2,7 +2,7 @@ import os
 import json
 from datetime import datetime
 from typing import Optional, List
-from sqlalchemy import create_engine, Column, String, Float, DateTime, Text, JSON, func, or_, Integer, ForeignKey, Table
+from sqlalchemy import create_engine, Column, String, Float, DateTime, Text, JSON, func, or_, Integer, ForeignKey, Table, Boolean, inspect, text
 from sqlalchemy.orm import sessionmaker, declarative_base, Session, relationship
 from dotenv import load_dotenv
 
@@ -54,6 +54,7 @@ class ArticleModel(Base):
     bias_article = Column(String, nullable=True)
     bias_confidence = Column(Float, nullable=True)
     bias_explanation = Column(Text, nullable=True)
+    orientation_score = Column(Float, nullable=True)
     embedding = Column(JSON, nullable=True) # In Postgres this will be VECTOR type later
     
     # Legacy JSON column (kept for backward compatibility during migration, but we will stop writing to it eventually)
@@ -61,6 +62,27 @@ class ArticleModel(Base):
     
     # New Relationship
     queries = relationship("SearchQuery", secondary=article_search_query_association, back_populates="articles")
+
+class StoryRecord(Base):
+    """Storia serializzata (articoli + metriche + dossier) per sopravvivere ai riavvii."""
+    __tablename__ = "stories"
+
+    id = Column(String, primary_key=True)
+    edition_id = Column(String, index=True, nullable=True)
+    query = Column(String, nullable=True, index=True)
+    title = Column(Text)
+    score = Column(Float, default=0.0)
+    data = Column(JSON)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
+class EditionRecord(Base):
+    __tablename__ = "editions"
+
+    id = Column(String, primary_key=True)
+    demo = Column(Boolean, default=False)
+    data = Column(JSON)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
 # --- Database Connection ---
 
@@ -71,8 +93,15 @@ engine = create_engine(
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def init_db():
-    """Create tables if they don't exist."""
+    """Crea le tabelle e applica le piccole migrazioni additive."""
     Base.metadata.create_all(bind=engine)
+    try:
+        cols = {c["name"] for c in inspect(engine).get_columns("articles")}
+        if "orientation_score" not in cols:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE articles ADD COLUMN orientation_score FLOAT"))
+    except Exception as e:  # pragma: no cover
+        print(f"Migrazione articles.orientation_score non applicata: {e}")
 
 def get_db():
     """Dependency for FastAPI to get DB session."""
@@ -96,11 +125,12 @@ def get_cached_analysis(db: Session, url: str):
             "bias_article": article.bias_article,
             "bias_confidence": article.bias_confidence,
             "bias_explanation": article.bias_explanation,
+            "orientation_score": article.orientation_score,
             "embedding": article.embedding
         }
     return None
 
-def cache_analysis(db: Session, url: str, bias: str, embedding: list, bias_article: str = None, bias_confidence: float = None, bias_explanation: str = None):
+def cache_analysis(db: Session, url: str, bias: str, embedding: list, bias_article: str = None, bias_confidence: float = None, bias_explanation: str = None, orientation_score: float = None):
     """
     Updates an existing article with analysis data using the provided session.
     """
@@ -111,6 +141,7 @@ def cache_analysis(db: Session, url: str, bias: str, embedding: list, bias_artic
             article.bias_article = bias_article
             article.bias_confidence = bias_confidence
             article.bias_explanation = bias_explanation
+            article.orientation_score = orientation_score
             article.embedding = embedding
             db.commit()
     except Exception as e:
@@ -234,6 +265,7 @@ def search_articles_in_db(db: Session, query: str, start_date: str = None, end_d
             "bias_article": r.bias_article,
             "bias_confidence": r.bias_confidence,
             "bias_explanation": r.bias_explanation,
+            "orientation_score": r.orientation_score,
             "embedding": r.embedding
         })
     return out
@@ -245,6 +277,50 @@ def get_latest_article_date(db: Session, query: str) -> Optional[datetime]:
     )
     latest = db.query(func.max(ArticleModel.published_at)).filter(search_filter).scalar()
     return latest
+
+# --- Storie ed edizioni -------------------------------------------------------
+
+def save_story(db: Session, story, edition_id: str = None):
+    rec = db.get(StoryRecord, story.id) or StoryRecord(id=story.id)
+    rec.edition_id = edition_id
+    rec.query = story.query
+    rec.title = story.title
+    rec.score = story.score
+    rec.data = json.loads(story.model_dump_json())
+    db.merge(rec)
+    db.commit()
+
+
+def load_story(db: Session, story_id: str):
+    rec = db.get(StoryRecord, story_id)
+    return rec.data if rec else None
+
+
+def save_edition(db: Session, edition):
+    rec = EditionRecord(id=edition.id, demo=edition.demo, data=json.loads(edition.model_dump_json()))
+    db.merge(rec)
+    db.commit()
+
+
+def latest_edition(db: Session, include_demo: bool = True):
+    q = db.query(EditionRecord)
+    if not include_demo:
+        q = q.filter(EditionRecord.demo.is_(False))
+    rec = q.order_by(EditionRecord.created_at.desc()).first()
+    return rec.data if rec else None
+
+
+def recent_articles(db: Session, since: datetime, limit: int = 2000):
+    """Articoli recenti gia' in DB (per costruire l'edizione senza riscaricare tutto)."""
+    rows = (
+        db.query(ArticleModel)
+        .filter(or_(ArticleModel.published_at >= since, ArticleModel.fetched_at >= since))
+        .order_by(ArticleModel.fetched_at.desc())
+        .limit(limit)
+        .all()
+    )
+    return rows
+
 
 # Initialize DB
 init_db()

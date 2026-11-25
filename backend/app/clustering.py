@@ -1,3 +1,4 @@
+import os
 import re
 import uuid
 from collections import Counter
@@ -14,6 +15,18 @@ from .services.openai_service import (
     generate_story_title,
     check_clusters_merge
 )
+
+
+ITALIAN_STOPWORDS = {
+    "il", "lo", "la", "i", "gli", "le", "un", "uno", "una", "di", "a", "da",
+    "in", "con", "su", "per", "tra", "fra", "e", "o", "ma", "se", "che",
+    "non", "ha", "ho", "è", "sono", "del", "della", "dei", "delle", "al",
+    "allo", "alla", "ai", "agli", "alle", "dal", "dallo", "dalla", "dai",
+    "dagli", "dalle", "nel", "nello", "nella", "nei", "negli", "nelle",
+    "sul", "sullo", "sulla", "sui", "sugli", "sulle", "come", "piu", "anche",
+    "dopo", "ed", "si", "ci", "ne", "questo", "questa", "quello", "quella",
+    "essere", "stato", "stata", "sara", "suo", "sua", "loro", "cosa", "oggi",
+}
 
 
 def _normalize_text(text: str) -> Set[str]:
@@ -78,48 +91,19 @@ def cluster_articles_into_stories(query: str, articles: List[Article]) -> List[S
 
     # --- PHASE 1: Initial Clustering (HAC or Jaccard) ---
     
-    # Filter articles that have embeddings
-    articles_with_emb = [a for a in articles if a.embedding] if use_ai else []
-    
-    if use_ai and len(articles_with_emb) > 1:
-        print(f"Using HAC with {len(articles_with_emb)} articles...")
+    articles_with_emb = [a for a in articles if a.embedding]
+
+    if len(articles_with_emb) > 1 and len(articles_with_emb) >= 0.8 * len(articles):
         try:
-            # Prepare Matrix
-            X = np.array([a.embedding for a in articles_with_emb])
-            
-            # HAC Configuration
-            # metric='cosine' computes cosine distance (1 - similarity)
-            # distance_threshold=0.35 implies similarity threshold of 0.65
-            hac = AgglomerativeClustering(
-                n_clusters=None,
-                metric='cosine',
-                linkage='average',
-                distance_threshold=0.35
-            )
-            labels = hac.fit_predict(X)
-            
-            # Group by labels
-            temp_clusters: Dict[int, List[Article]] = {}
-            for idx, label in enumerate(labels):
-                if label not in temp_clusters:
-                    temp_clusters[label] = []
-                temp_clusters[label].append(articles_with_emb[idx])
-            
-            clusters = list(temp_clusters.values())
-            
-            # Handle articles without embeddings (if any)
-            orphans = [a for a in articles if not a.embedding]
-            if orphans:
-                # Simple fallback: add them as singletons (or could try Jaccard against clusters)
-                for o in orphans:
-                    clusters.append([o])
-                    
+            clusters = _hac(np.array([a.embedding for a in articles_with_emb]), articles_with_emb, 0.35)
+            clusters += [[a] for a in articles if not a.embedding]
         except Exception as e:
-            print(f"HAC failed: {e}. Falling back to Jaccard.")
-            clusters = _fallback_jaccard_clustering(articles)
+            print(f"HAC su embedding fallito: {e}. Uso TF-IDF.")
+            clusters = _tfidf_clustering(articles)
+    elif len(articles) > 1:
+        clusters = _tfidf_clustering(articles)
     else:
-        print("Using Jaccard Similarity (Fallback)...")
-        clusters = _fallback_jaccard_clustering(articles)
+        clusters = [articles]
 
     # --- PHASE 2: AI Merge (The "Magic Touch") ---
     
@@ -128,7 +112,11 @@ def cluster_articles_into_stories(query: str, articles: List[Article]) -> List[S
         
         # Prepare input for AI: ID and Titles
         cluster_previews = []
+        # Solo i cluster piu' grandi: con centinaia di singoletti il prompt esploderebbe.
+        candidates = set(sorted(range(len(clusters)), key=lambda i: -len(clusters[i]))[:60])
         for i, cluster in enumerate(clusters):
+            if i not in candidates:
+                continue
             # Get top 3 titles from the cluster to give AI better context
             titles = [a.title for a in cluster[:3]]
             cluster_previews.append({
@@ -201,6 +189,41 @@ def cluster_articles_into_stories(query: str, articles: List[Article]) -> List[S
     stories.sort(key=lambda s: s.stats.total_articles, reverse=True)
 
     return stories
+
+
+def _hac(X, items, threshold: float) -> List[List[Article]]:
+    hac = AgglomerativeClustering(
+        n_clusters=None, metric="cosine", linkage="average", distance_threshold=threshold
+    )
+    labels = hac.fit_predict(X)
+    groups: Dict[int, List[Article]] = {}
+    for item, label in zip(items, labels):
+        groups.setdefault(int(label), []).append(item)
+    return list(groups.values())
+
+
+def _tfidf_clustering(articles: List[Article]) -> List[List[Article]]:
+    """Clustering senza embedding: TF-IDF su titolo + attacco del testo.
+
+    Meno preciso degli embedding ma gratuito e deterministico: e' il default
+    quando non c'e' una chiave OpenAI.
+    """
+    from sklearn.feature_extraction.text import TfidfVectorizer
+
+    docs = [f"{a.title} {a.title} {a.snippet} {(a.body or '')[:600]}" for a in articles]
+    try:
+        vec = TfidfVectorizer(
+            lowercase=True, stop_words=list(ITALIAN_STOPWORDS), ngram_range=(1, 1),
+            min_df=1, sublinear_tf=True, strip_accents="unicode",
+        )
+        X = vec.fit_transform(docs).toarray()
+        if X.shape[1] == 0:
+            raise ValueError("vocabolario vuoto")
+        threshold = float(os.getenv("PULSAR_TFIDF_THRESHOLD", "0.88"))
+        return _hac(X, articles, threshold)
+    except Exception as e:
+        print(f"TF-IDF fallito: {e}. Uso Jaccard.")
+        return _fallback_jaccard_clustering(articles)
 
 
 def _fallback_jaccard_clustering(articles: List[Article]) -> List[List[Article]]:

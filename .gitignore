@@ -25,3 +25,7 @@ Thumbs.db
 .env
 *.db
 backend/cache.db
+
+# Pulsar
+*.db
+backend/pulsar-test.db

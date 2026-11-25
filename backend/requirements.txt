@@ -3,9 +3,16 @@ uvicorn[standard]
 requests
 beautifulsoup4
 pandas
-openai
 python-dotenv
 numpy
 scikit-learn
 sqlalchemy
 psycopg2-binary
+feedparser
+trafilatura
+# LLM: basta uno dei due (Anthropic consigliato per i dossier, OpenAI per gli embedding)
+anthropic
+openai
+# test
+pytest
+httpx
