@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import Cover from "../components/Cover";
 import HeadlineDial from "../components/HeadlineDial";
+import Scrolly from "../components/Scrolly";
 import {
   Fingerprint,
   IndependenceLine,
@@ -9,6 +11,7 @@ import {
   StatusTag,
 } from "../components/Instruments";
 import { api } from "../lib/api";
+import { recordOpen } from "../lib/profile";
 import {
   INTERP_KIND,
   STATUS_ORDER,
@@ -43,6 +46,19 @@ function FactRow({ f, names, articlesById }) {
               {f.downgraded_from ? "Declassato da Pulsar: " : ""}
               {f.verification}
             </p>
+          )}
+          {f.evidence?.length > 0 && (
+            <ul className="fact-evidence">
+              {f.evidence.map((ev, i) => (
+                <li key={i} className={ev.verified ? "is-ok" : "is-ko"}>
+                  <q>{ev.quote}</q>
+                  <span>
+                    {names[ev.source_id]}:{" "}
+                    {ev.verified ? "citazione ritrovata nel testo" : "citazione NON ritrovata, fonte esclusa"}
+                  </span>
+                </li>
+              ))}
+            </ul>
           )}
           <ul className="fact-cites">
             {f.article_ids.map((id) => {
@@ -99,7 +115,10 @@ export default function StoryPage() {
   useEffect(() => {
     api
       .story(id)
-      .then((story) => setLoaded({ id, story, error: null }))
+      .then((story) => {
+        setLoaded({ id, story, error: null });
+        recordOpen(story);
+      })
       .catch((e) => setLoaded({ id, story: null, error: e.message }));
     window.scrollTo(0, 0);
   }, [id]);
@@ -176,35 +195,38 @@ export default function StoryPage() {
     ["omissioni", "Cosa manca, e a chi", d?.omissions.length],
     ["parole", "Parole cariche", d?.loaded_language.length],
     ["domande", "Cosa non sappiamo ancora", d?.open_questions.length],
+    ["evoluzione", "Come è cambiata", story.updates?.length],
     ["cronologia", "Chi l'ha detto e quando", m?.timeline.length],
     ["articoli", "Tutti gli articoli", story.articles.length],
   ].filter(([, , n]) => n);
 
   return (
     <main className="story">
-      <header className="story-hero">
+      <header className="story-hero story-hero--cover">
+        <Cover story={story} variant="hero" showFacts={false} />
+        <div className="cs-shade" aria-hidden />
         <div className="story-head">
           <Link to="/" className="back">
-            Prima pagina
+            La tua edizione
           </Link>
           <p className="meta">
-            {story.section && (
-              <span className="meta-section">{story.section}</span>
-            )}
+            {story.section && <span className="meta-section">{story.section}</span>}
             <span>
-              {plural(story.stats.total_articles, "articolo", "articoli")} da{" "}
-              {plural(outlets.length, "testata", "testate")}
+              {plural(story.stats.total_articles, "articolo", "articoli")} da {plural(outlets.length, "testata", "testate")}
             </span>
-            {m?.first_reported_by && (
-              <span>prima notizia: {m.first_reported_by}</span>
-            )}
+            {m?.first_reported_by && <span>prima notizia: {m.first_reported_by}</span>}
           </p>
           <h1 className="story-title">{story.title}</h1>
           {d?.summary && <p className="story-summary">{d.summary}</p>}
           {m?.blindspot && <p className="story-blind">{m.blindspot.message}</p>}
-          <HeadlineDial headlines={headlines} />
         </div>
       </header>
+      {headlines.length > 1 && (
+        <div className="story-dial">
+          <HeadlineDial headlines={headlines} />
+        </div>
+      )}
+      {d && <Scrolly story={story} names={names} orientation={orientation} />}
 
       <div className="story-wrap">
         <div className="story-grid">
@@ -366,6 +388,30 @@ export default function StoryPage() {
               </Section>
             )}
 
+            {story.updates?.length > 0 && (
+              <Section
+                id="evoluzione"
+                title="Come è cambiata"
+                intro="Le notizie maturano: nuove testate, smentite, conferme. Ogni cambio di stato resta scritto qui."
+              >
+                <ol className="evo">
+                  {[...story.updates].reverse().map((u, i) => (
+                    <li key={i} className={`evo-${u.kind}`}>
+                      <time>{clock(u.at)}</time>
+                      <p>
+                        {u.kind === "cambio_stato" && u.to_status && (
+                          <span className="evo-change">
+                            <StatusTag status={u.from_status} /> <span aria-hidden>›</span> <StatusTag status={u.to_status} />
+                          </span>
+                        )}
+                        {u.text}
+                      </p>
+                    </li>
+                  ))}
+                </ol>
+              </Section>
+            )}
+
             {m?.timeline.length > 0 && (
               <Section
                 id="cronologia"
@@ -462,6 +508,11 @@ export default function StoryPage() {
                   ))}
                 </ul>
               </nav>
+            )}
+            {d?.grounding && (
+              <p className="rail-note">
+                {d.grounding.verified} citazioni su {d.grounding.total} ritrovate parola per parola negli articoli.
+              </p>
             )}
             {d && (
               <p className="rail-gen">

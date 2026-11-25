@@ -13,12 +13,35 @@
 
 Il principio di design: **il colore indica solo la certezza, mai la politica.** Lo spettro è un asse in inchiostro neutro; verde, ocra, magenta e viola sono riservati agli stati dei fatti.
 
+## L'esperienza
+
+- **Prima apertura**: scegli gli argomenti che segui, dal catalogo o scritti con parole tue ("politica estera dell'Italia", "Formula 1").
+- **Prima apertura del giorno**: il briefing a schermo intero, una storia per schermata, solo sui tuoi argomenti. Scorri in verticale per cambiare storia, di lato per vedere come l'ha titolata ogni testata.
+- **La rivista**: storia di copertina, un binario per ogni argomento, la giornata, il gioco "Di chi è questo titolo?", i punti ciechi.
+- **La storia**: una scena che si trasforma mentre scorri (chi ne parla, cosa è accertato, dove si dividono, come la raccontano), poi il dossier completo con le citazioni verificate e la cronologia dei cambi di stato.
+- **Pulsar impara**: le sezioni che apri e i "di più / meno" affinano l'ordine. Il profilo resta nel browser; il server lo riceve a ogni apertura e non lo salva.
+
+## L'aggregatore
+
+`python -m app.aggregator.worker --every 20` (oppure `PULSAR_SCHEDULE_MINUTES=20` per farlo girare dentro l'API). Ogni giro:
+
+1. **Fetch**: GET condizionali (ETag/Last-Modified), retry con backoff, circuit breaker per feed salvato su DB. Una testata rotta va in pausa da sola e non rallenta il giro.
+2. **Normalizza**: URL canonici, deduplica per URL e per titolo, scarto delle rubriche.
+3. **Arricchisci**: testo completo, bias del testo, embedding (con cache).
+4. **Aggancia**: gli articoli nuovi entrano nella storia aperta più simile (ID stabili, finestra di 72 ore); il resto forma storie nuove.
+5. **Verifica**: il dossier viene rigenerato solo se cambiano le testate o arrivano almeno due articoli. I cambi di stato dei fatti finiscono nella cronologia della storia.
+6. **Pubblica**: nuova edizione. Se il giro fallisce, resta online quella precedente.
+
+Ogni giro è registrato con tempi per fase, conteggi ed errori: `GET /api/status`.
+
 ## Perché ci si può fidare (e dove no)
 
 1. **Si contano le voci, non gli articoli.** Testate dello stesso editore contano come una voce sola (es. Il Giornale, Libero e Il Tempo fanno capo agli Angelucci). Un testo che riprende quasi alla lettera un lancio d'agenzia conta come l'agenzia: lo misuriamo con sovrapposizione di 5-grammi, senza AI (`backend/app/analysis/independence.py`).
 2. **Il modello lavora solo sugli articoli.** Il dossier è generato da un LLM a partire dai soli testi della storia, con citazioni numerate; le citazioni inesistenti vengono scartate.
-3. **Le regole correggono il modello, mai il contrario.** Se il modello dice "confermato" ma ci sono meno di due voci indipendenti, lo stato scende a "riportato" e l'interfaccia spiega perché. Nessuna regola può alzare uno stato (`backend/app/analysis/dossier.py`).
-4. **Limiti dichiarati.** L'orientamento delle testate è una stima editoriale di partenza, contestabile, e l'asse sinistra-destra semplifica. Gli assetti proprietari sono aggiornati a novembre 2026: quelli verificati hanno un link alla fonte, gli altri sono marcati "da verificare" (`backend/app/sources.py`).
+3. **Ogni fatto porta citazioni letterali.** Il modello deve copiare una frase da ogni articolo che cita; Pulsar la cerca nel testo. Una citazione che non si trova (il segno più affidabile di un'allucinazione) esclude quella fonte, e un fatto senza citazioni valide diventa "non verificato" (`backend/app/analysis/grounding.py`).
+4. **Le regole correggono il modello, mai il contrario.** Se il modello dice "confermato" ma ci sono meno di due voci indipendenti, lo stato scende a "riportato" e l'interfaccia spiega perché. Nessuna regola può alzare uno stato (`backend/app/analysis/dossier.py`).
+5. **Ogni dossier è riproducibile**: versione del prompt, modello e hash degli articoli in ingresso sono salvati con il dossier.
+6. **Limiti dichiarati.** L'orientamento delle testate è una stima editoriale di partenza, contestabile, e l'asse sinistra-destra semplifica. Gli assetti proprietari sono aggiornati a novembre 2026: quelli verificati hanno un link alla fonte, gli altri sono marcati "da verificare" (`backend/app/sources.py`).
 
 ## Avvio rapido
 

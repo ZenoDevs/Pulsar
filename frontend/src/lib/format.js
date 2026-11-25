@@ -83,3 +83,17 @@ export function sourceNames(story) {
   (story?.metrics?.spectrum || []).forEach((p) => (map[p.source_id] = p.source_name));
   return map;
 }
+
+/** Tinta profonda per sezione: dà ritmo alla rivista senza toccare i colori
+ *  degli stati (che restano riservati alla certezza dei fatti). */
+export const SECTION_TONE = {
+  Esteri: ["#1d3557", "#0c1a2e"],
+  Politica: ["#3b2552", "#170f24"],
+  Economia: ["#14443b", "#08201c"],
+  Cronaca: ["#5a2229", "#1c0b0e"],
+  Società: ["#3f3c18", "#1a1908"],
+  Cultura: ["#4c1d35", "#1f0b16"],
+  Scienza: ["#123f4c", "#071b21"],
+  Sport: ["#2f3d14", "#131a07"],
+};
+export const toneOf = (section) => SECTION_TONE[section] || ["#232b3d", "#0e1320"];

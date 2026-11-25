@@ -26,6 +26,9 @@ export const api = {
   refresh: () => post("/api/edition/refresh"),
   job: (id) => get(`/api/jobs/${id}`),
   search: (query) => post("/api/search", { query }),
+  topics: () => get("/api/topics"),
+  feed: (payload) => post("/api/feed", payload),
+  status: () => get("/api/status"),
   searchStatus: (id) => get(`/api/search/status/${id}`),
 };
 

@@ -64,7 +64,7 @@ CATALOG: List[Topic] = [
           ["clima", "energia", "batterie", "rinnovabil", "emissioni", "gas", "elettric", "siccità", "alluvion", "ambiental"],
           ["Scienza", "Economia"], "Transizione, energia, eventi estremi"),
     Topic("tech", "Tecnologia e AI",
-          ["intelligenza artificiale", "ai", "startup", "tecnologi", "digitale", "dati", "software", "cyber", "innovazion"],
+          ["intelligenza artificiale", "startup", "tecnologi", "digitale", "software", "cyber", "innovazion", "algoritm", "chip", "batterie"],
           ["Economia", "Scienza"], "AI, startup, digitale"),
     Topic("salute", "Salute",
           ["salute", "ospedal", "sanità", "medici", "pazienti", "vaccin", "malatti", "farmac"],
@@ -150,7 +150,7 @@ def match_score(text: str, section: Optional[str], keywords: List[str], sections
 def assign_topics(story) -> List[str]:
     text = story_text(story)
     scored = [(t.id, match_score(text, story.section, t.keywords, t.sections)) for t in CATALOG]
-    return [tid for tid, s in sorted(scored, key=lambda x: -x[1]) if s >= 0.45][:4]
+    return [tid for tid, s in sorted(scored, key=lambda x: -x[1]) if s >= 0.6][:3]
 
 
 # --------------------------------------------------------------------------

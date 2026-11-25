@@ -1,29 +1,48 @@
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
 import Masthead from "./components/Masthead";
-import EditionPage from "./pages/EditionPage";
+import Briefing from "./pages/Briefing";
+import Home from "./pages/Home";
+import Onboarding from "./pages/Onboarding";
 import SearchPage from "./pages/SearchPage";
 import SourcesPage from "./pages/SourcesPage";
 import StoryPage from "./pages/StoryPage";
+import TopicsPage from "./pages/TopicsPage";
 
-export default function App() {
+/** Briefing e onboarding sono esperienze a schermo intero: niente testata né piede. */
+function Shell() {
+  const { pathname } = useLocation();
+  const immersive = pathname.startsWith("/briefing") || pathname.startsWith("/benvenuto");
   return (
-    <BrowserRouter>
+    <>
       <a href="#contenuto" className="skip">
         Vai al contenuto
       </a>
-      <Masthead />
+      {!immersive && <Masthead />}
       <div id="contenuto">
         <Routes>
-          <Route path="/" element={<EditionPage />} />
+          <Route path="/" element={<Home />} />
+          <Route path="/benvenuto" element={<Onboarding />} />
+          <Route path="/briefing" element={<Briefing />} />
+          <Route path="/argomenti" element={<TopicsPage />} />
           <Route path="/storia/:id" element={<StoryPage />} />
           <Route path="/story/:id" element={<StoryPage />} />
           <Route path="/cerca" element={<SearchPage />} />
           <Route path="/fonti" element={<SourcesPage />} />
         </Routes>
       </div>
-      <footer className="foot">
-        <p>Pulsar confronta le testate, non le sostituisce: apri sempre gli articoli originali.</p>
-      </footer>
+      {!immersive && (
+        <footer className="foot">
+          <p>Pulsar confronta le testate, non le sostituisce: apri sempre gli articoli originali.</p>
+        </footer>
+      )}
+    </>
+  );
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <Shell />
     </BrowserRouter>
   );
 }

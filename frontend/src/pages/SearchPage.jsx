@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { StoryRow } from "../components/StoryItems";
+import { Card } from "../components/Cards";
 import { api, poll } from "../lib/api";
 
 export default function SearchPage() {
@@ -38,9 +38,9 @@ export default function SearchPage() {
       )}
       {state.status === "completed" &&
         (state.stories?.length ? (
-          <section className="edition-list">
-            {state.stories.map((s) => (
-              <StoryRow key={s.id} s={s} />
+          <section className="day-grid">
+            {state.stories.map((s, i) => (
+              <Card key={s.id} s={s} size={i === 0 ? "lg" : "md"} />
             ))}
           </section>
         ) : (

@@ -1,5 +1,6 @@
 @import "@fontsource-variable/schibsted-grotesk";
-@import "@fontsource-variable/literata";
+@import "@fontsource-variable/bodoni-moda/opsz.css";
+@import "@fontsource-variable/bodoni-moda/opsz-italic.css";
 
 /* ------------------------------------------------------------------
    Pulsar — token
@@ -21,7 +22,12 @@
   --c-interpretazione: #5a4fb8;
 
   --sans: "Schibsted Grotesk Variable", "Helvetica Neue", Arial, sans-serif;
-  --serif: "Literata Variable", Georgia, serif;
+  --display: "Bodoni Moda Variable", "Bodoni 72", Didot, Georgia, serif;
+  --serif: var(--sans);
+  --night: #121a2b;
+  --night-2: #1b2438;
+  --on-night: #eef0ee;
+  --on-night-2: #aab2c0;
 
   /* scala 1.25 su 17px */
   --t-xs: 0.8rem;
@@ -52,9 +58,9 @@ body {
   margin: 0;
   background: var(--paper);
   color: var(--ink);
-  font-family: var(--serif);
+  font-family: var(--sans);
   font-size: var(--t-base);
-  line-height: 1.6;
+  line-height: 1.55;
   font-optical-sizing: auto;
   -webkit-font-smoothing: antialiased;
 }
