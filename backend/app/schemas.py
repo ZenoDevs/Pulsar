@@ -54,6 +54,16 @@ class StoryStats(BaseModel):
 # --------------------------------------------------------------------------
 
 
+class Evidence(BaseModel):
+    """Citazione testuale con cui il modello giustifica un fatto, verificata nel testo."""
+
+    article_id: str
+    source_id: str
+    quote: str
+    verified: bool = False
+    match: float = 0.0
+
+
 class Fact(BaseModel):
     id: str
     text: str
@@ -66,6 +76,7 @@ class Fact(BaseModel):
         None, description="Spiegazione deterministica dello stato (regole di Pulsar)"
     )
     downgraded_from: Optional[FactStatus] = None
+    evidence: List[Evidence] = []
 
 
 class Interpretation(BaseModel):
@@ -122,6 +133,9 @@ class Dossier(BaseModel):
     section: Optional[str] = None
     generated_by: str = "ai"
     generated_at: datetime = Field(default_factory=datetime.utcnow)
+    prompt_version: Optional[str] = None
+    input_hash: Optional[str] = Field(None, description="Hash degli articoli dati al modello: rende il dossier riproducibile")
+    grounding: Optional[Dict[str, int]] = Field(None, description="Citazioni verificate / totali")
 
 
 # --------------------------------------------------------------------------
@@ -172,6 +186,17 @@ class StoryMetrics(BaseModel):
     timeline: List[TimelineEntry] = []
 
 
+class StoryUpdate(BaseModel):
+    """Un cambiamento nella storia nel tempo: e' cosi' che la notizia matura."""
+
+    at: datetime = Field(default_factory=datetime.utcnow)
+    kind: Literal["apertura", "nuove_testate", "nuovi_articoli", "cambio_stato", "nuovo_fatto"]
+    text: str
+    fact_text: Optional[str] = None
+    from_status: Optional[str] = None
+    to_status: Optional[str] = None
+
+
 class Story(BaseModel):
     id: str
     query: str = ""
@@ -183,6 +208,8 @@ class Story(BaseModel):
     dossier: Optional[Dossier] = None
     score: float = 0.0
     section: Optional[str] = None
+    topics: List[str] = []
+    updates: List[StoryUpdate] = []
     # Retro-compatibilita': vecchia analisi markdown
     analysis: Optional[str] = None
 
@@ -211,7 +238,10 @@ class StorySummary(BaseModel):
     headlines: List[Headline] = []
     loaded_terms: List[LoadedTerm] = []
     image_url: Optional[str] = None
+    topics: List[str] = []
+    updates: List[StoryUpdate] = []
     score: float = 0.0
+    reason: Optional[str] = Field(None, description="Perche' la vedi (feed personalizzato)")
 
 
 class Edition(BaseModel):

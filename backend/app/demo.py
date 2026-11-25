@@ -21,7 +21,7 @@ from .analysis.dossier import parse_dossier
 from .analysis.independence import detect_echoes
 from .clustering import _compute_stats
 from .pipeline import STORY_CACHE, assemble_edition, finalize_story
-from .schemas import Article, Edition, Story
+from .schemas import Article, Edition, Story, StoryUpdate
 from .sources import SourceInfo, get_source, register_sources
 
 DEMO_SOURCES = [
@@ -86,13 +86,21 @@ STORIES = [
             "sezione": "Cronaca",
             "sommario": "Alle 6.40 è crollata una campata del ponte sul fiume Serra a Borgo Alto. La statale 14 è chiusa e la Procura di Valdora ha aperto un fascicolo. Il numero dei feriti non è concorde tra le fonti.",
             "fatti": [
-                {"testo": "Una campata del ponte sul fiume Serra, sulla statale 14, è crollata alle 6.40.", "stato": "confermato", "fonti": [1, 4, 7, 8]},
+                {"testo": "Una campata del ponte sul fiume Serra, sulla statale 14, è crollata alle 6.40.", "stato": "confermato", "fonti": [1, 4, 7, 8], "evidenze": [
+                    {"fonte": 1, "citazione": "Alle 6.40 di questa mattina è crollata una campata del ponte sul fiume Serra"},
+                    {"fonte": 4, "citazione": "Il crollo di stamattina a Borgo Alto non è un fulmine a ciel sereno"},
+                    {"fonte": 7, "citazione": "stanziato 2,1 milioni di euro nel 2025 per il ponte sul Serra"}]},
                 {"testo": "La statale 14 è chiusa in entrambe le direzioni; il traffico è deviato sulla provinciale 9.", "stato": "confermato", "fonti": [1, 2, 3]},
-                {"testo": "Numero dei feriti.", "stato": "contestato", "fonti": [1, 7, 8], "nota": "Uno secondo vigili del fuoco e Regione, tre secondo 'fonti locali' citate da una sola testata."},
+                {"testo": "Numero dei feriti.", "stato": "contestato", "fonti": [1, 7, 8], "evidenze": [
+                    {"fonte": 1, "citazione": "una persona, il conducente di un furgone, è rimasta ferita in modo non grave"},
+                    {"fonte": 8, "citazione": "tre persone ferite, tra cui due operai che lavoravano sotto la campata"}], "nota": "Uno secondo vigili del fuoco e Regione, tre secondo 'fonti locali' citate da una sola testata."},
                 {"testo": "La Procura di Valdora ha aperto un fascicolo.", "stato": "confermato", "fonti": [1, 2, 3]},
                 {"testo": "Una relazione tecnica del 2024 raccomandava interventi sui piloni entro dodici mesi.", "stato": "confermato", "fonti": [4, 5]},
                 {"testo": "La Regione ha stanziato 2,1 milioni di euro per il ponte nel 2025.", "stato": "riportato", "fonti": [7, 5], "nota": "Dichiarazione della Regione, nessun documento citato."},
-                {"testo": "La ditta di manutenzione sarebbe sotto indagine.", "stato": "non_verificato", "fonti": [8]},
+                {"testo": "La ditta di manutenzione sarebbe sotto indagine.", "stato": "non_verificato", "fonti": [8], "evidenze": [
+                    {"fonte": 8, "citazione": "la ditta incaricata della manutenzione sarebbe già sotto indagine"}]},
+                {"testo": "Il presidente della Regione ha annunciato una commissione d'inchiesta.", "stato": "riportato", "fonti": [7], "evidenze": [
+                    {"fonte": 7, "citazione": "il presidente della Regione ha annunciato una commissione d'inchiesta sul crollo"}]},
             ],
             "interpretazioni": [
                 {"testo": "Il crollo è conseguenza dei tagli alla manutenzione decisi dalla giunta regionale.", "tipo": "causa", "fonti": [6]},
@@ -323,6 +331,68 @@ STORIES = [
 ]
 
 
+STORIES.append({
+    "hours": 5,
+    "articles": [
+        ("demo_lince", 6, "Mare di Corvara, il Parlamento approva la partecipazione alla missione navale",
+         "La Camera ha approvato con 312 voti favorevoli e 98 contrari la partecipazione alla missione navale europea nel mare di Corvara. "
+         "L'Italia metterà a disposizione due fregate e circa 400 militari per sei mesi. Il costo stimato è di 92 milioni di euro."),
+        ("demo_cronache", 5.5, "Missione a Corvara, l'Italia entra in un conflitto che non è suo",
+         "Due fregate e 400 militari nel mare di Corvara: il Parlamento dice sì a una missione dai contorni incerti. "
+         "Le associazioni pacifiste chiedono di conoscere le regole d'ingaggio, che il governo non ha reso pubbliche."),
+        ("demo_pendolo", 5, "Corvara, via libera alla missione: due fregate per sei mesi",
+         "Via libera della Camera alla missione navale europea nel mare di Corvara, con 312 sì e 98 no. Due fregate, circa 400 militari, "
+         "costo stimato 92 milioni. Le regole d'ingaggio saranno illustrate alle commissioni in seduta riservata."),
+        ("demo_vetro", 4.5, "Corvara, l'Italia guida la flotta europea",
+         "Secondo fonti della Difesa, all'Italia potrebbe essere affidato il comando della missione navale europea nel mare di Corvara. "
+         "La decisione spetta al Consiglio europeo."),
+        ("demo_baluardo", 4, "Corvara, finalmente l'Italia torna protagonista nel Mediterraneo",
+         "Con due fregate e 400 uomini l'Italia torna a contare. Secondo fonti della Difesa al nostro Paese andrà il comando della missione."),
+    ],
+    "llm": {
+        "titolo_neutro": "La Camera approva la partecipazione italiana alla missione navale nel mare di Corvara",
+        "sezione": "Esteri",
+        "sommario": "Con 312 voti favorevoli e 98 contrari la Camera ha approvato la partecipazione alla missione navale europea nel mare di Corvara: due fregate e circa 400 militari per sei mesi.",
+        "fatti": [
+            {"testo": "La Camera ha approvato la partecipazione con 312 voti favorevoli e 98 contrari.", "stato": "confermato", "fonti": [1, 3]},
+            {"testo": "L'Italia impiega due fregate e circa 400 militari per sei mesi.", "stato": "confermato", "fonti": [1, 2, 3, 5]},
+            {"testo": "Il costo stimato è di 92 milioni di euro.", "stato": "riportato", "fonti": [1, 3], "nota": "Stima riportata dall'agenzia e ripresa."},
+            {"testo": "All'Italia andrà il comando della missione.", "stato": "non_verificato", "fonti": [4, 5], "nota": "'Fonti della Difesa'; la decisione spetta al Consiglio europeo."},
+            {"testo": "Le regole d'ingaggio non sono state rese pubbliche.", "stato": "confermato", "fonti": [2, 3]},
+        ],
+        "interpretazioni": [
+            {"testo": "La missione coinvolge l'Italia in un conflitto che non la riguarda.", "tipo": "giudizio", "fonti": [2]},
+            {"testo": "La missione restituisce all'Italia un ruolo da protagonista.", "tipo": "giudizio", "fonti": [5]},
+        ],
+        "divergenze": [{"tema": "Chi comanderà la missione", "versioni": [
+            {"racconto": "L'Italia, secondo fonti della Difesa.", "fonti": [4, 5]},
+            {"racconto": "Non ancora deciso: spetta al Consiglio europeo.", "fonti": [4]},
+        ]}],
+        "inquadramenti": [
+            {"etichetta": "Rischio di guerra", "cornice": "Una missione opaca che espone il Paese.", "parole_chiave": ["conflitto", "contorni incerti"], "fonti": [2]},
+            {"etichetta": "Atto parlamentare", "cornice": "Voti, mezzi, costi e tempi della missione.", "parole_chiave": ["via libera", "fregate", "costo"], "fonti": [1, 3]},
+            {"etichetta": "Prestigio nazionale", "cornice": "L'Italia torna a contare nel Mediterraneo.", "parole_chiave": ["protagonista", "comando"], "fonti": [4, 5]},
+        ],
+        "omissioni": [{"elemento": "Le regole d'ingaggio non sono pubbliche", "presente_in": [2, 3], "assente_in": [4, 5]}],
+        "linguaggio": [{"termine": "finalmente torna protagonista", "fonte": 5, "alternativa_neutra": "partecipa alla missione", "perche": "Giudizio di valore nel titolo."}],
+        "domande_aperte": ["Quali sono le regole d'ingaggio?", "Chi avra' il comando operativo?"],
+        "contesto": "",
+    },
+})
+
+
+DEMO_UPDATES = {
+    1: [
+        ("apertura", 4.2, "Prima notizia da Agenzia Lince.", None, None, None),
+        ("nuove_testate", 3.1, "Ne parlano anche: Il Faro, Corriere di Vetro.", None, None, None),
+        ("cambio_stato", 2.5, "«Una relazione tecnica del 2024 raccomandava interventi sui piloni» passa da non verificato a riportato.",
+         "Una relazione tecnica del 2024 raccomandava interventi sui piloni entro dodici mesi.", "non_verificato", "riportato"),
+        ("nuove_testate", 1.5, "Ne parlano anche: Il Baluardo, Il Megafono.", None, None, None),
+        ("cambio_stato", 1.4, "«Numero dei feriti» passa da confermato a contestato.", "Numero dei feriti.", "confermato", "contestato"),
+    ],
+}
+
+
 def _make_article(source_id: str, hours_ago: float, title: str, body: str, now: datetime) -> Article:
     src = get_source(source_id)
     return Article(
@@ -357,6 +427,8 @@ def build_demo_edition() -> Edition:
         # Il dossier usa la numerazione dell'ordine originale degli articoli
         story.dossier = parse_dossier(spec["llm"], arts, {a.id: a for a in arts})
         story.dossier.generated_by = "demo"
+        for kind, h, text, fact, fr, to in DEMO_UPDATES.get(i + 1, []):
+            story.updates.append(StoryUpdate(at=now - timedelta(hours=h), kind=kind, text=text, fact_text=fact, from_status=fr, to_status=to))
         finalize_story(story, with_dossier=False)
         STORY_CACHE[story.id] = story
         stories.append(story)

@@ -104,8 +104,35 @@ def complete_json(
     tier: str = "fast",
     max_tokens: int = 1500,
     temperature: float = 0.0,
+    required_keys: tuple = (),
+    retries: int = 2,
 ) -> dict:
-    """Chiede al modello un JSON e lo restituisce gia' parsato."""
+    """Chiede al modello un JSON valido, con retry e backoff.
+
+    Riprova su errori di rete/limiti e su JSON malformato o privo delle chiavi
+    richieste. Dopo l'ultimo tentativo rilancia l'eccezione: chi chiama decide
+    se andare avanti senza dossier.
+    """
+    import time
+
+    last: Exception | None = None
+    for attempt in range(retries + 1):
+        try:
+            data = _complete_json_once(prompt, system=system, tier=tier, max_tokens=max_tokens, temperature=temperature)
+            missing = [k for k in required_keys if k not in data]
+            if missing:
+                raise ValueError(f"chiavi mancanti: {missing}")
+            return data
+        except Exception as e:
+            last = e
+            log.warning("LLM tentativo %d/%d fallito: %s", attempt + 1, retries + 1, e)
+            if attempt < retries:
+                time.sleep(2 * 2**attempt)
+                prompt = prompt if "Rispondi SOLO" in prompt else prompt + "\n\nRispondi SOLO con il JSON richiesto, completo."
+    raise last  # type: ignore[misc]
+
+
+def _complete_json_once(prompt: str, *, system: str, tier: str, max_tokens: int, temperature: float) -> dict:
     p = provider()
     if p is None:
         raise RuntimeError("Nessun provider LLM configurato")

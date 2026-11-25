@@ -71,6 +71,9 @@ def finalize_story(story: Story, with_dossier: bool) -> Story:
         story.title = story.dossier.neutral_title or story.title
         story.section = story.dossier.section or story.section
         story.metrics = compute_metrics(story)  # aggiorna la solidita'
+    from .topics import assign_topics
+
+    story.topics = assign_topics(story)
     story.score = story_score(story)
     return story
 
@@ -142,6 +145,8 @@ def summarize(story: Story) -> StorySummary:
         headlines=headlines,
         loaded_terms=d.loaded_language[:3] if d else [],
         image_url=image,
+        topics=story.topics,
+        updates=story.updates[-3:],
         title=story.title,
         summary=d.summary if d else (story.articles[0].snippet if story.articles else None),
         section=story.section,

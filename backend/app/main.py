@@ -17,6 +17,7 @@ from .analysis.dossier import build_dossier
 from .db_orm import SessionLocal, latest_edition, load_story, search_articles_in_db
 from .pipeline import STORY_CACHE, build_stories, finalize_story, summarize
 from .schemas import Article, Edition, SearchRequest, Story, StorySummary
+from .topics import CATALOG, expand_custom, personalize
 from .sources import ORIENTATION_DISCLAIMER, SOURCE_NAMES, get_source, real_sources
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
@@ -38,6 +39,7 @@ app.add_middleware(
 )
 
 DEMO_MODE = os.getenv("PULSAR_DEMO", "auto")  # auto | 1 | 0
+SCHEDULE_MINUTES = int(os.getenv("PULSAR_SCHEDULE_MINUTES", "0"))
 JOBS: Dict[str, dict] = {}
 _DEMO_EDITION: Optional[Edition] = None
 
@@ -49,6 +51,25 @@ def _demo_edition() -> Edition:
 
         _DEMO_EDITION = build_demo_edition()
     return _DEMO_EDITION
+
+
+@app.on_event("startup")
+def _start_scheduler() -> None:
+    """Aggregatore dentro il processo API (comodo in sviluppo e su un solo server).
+    In produzione meglio un processo separato: python -m app.aggregator.worker --every 20"""
+    if SCHEDULE_MINUTES <= 0:
+        return
+    import threading
+    import time
+
+    from .aggregator.worker import run_once
+
+    def loop():
+        while True:
+            run_once(progress=lambda m: log.info(m))
+            time.sleep(SCHEDULE_MINUTES * 60)
+
+    threading.Thread(target=loop, daemon=True, name="pulsar-aggregator").start()
 
 
 # --------------------------------------------------------------------------
@@ -226,15 +247,94 @@ def get_story(story_id: str) -> Story:
 
 
 # --------------------------------------------------------------------------
+# Personalizzazione
+# --------------------------------------------------------------------------
+
+
+@app.get("/api/topics")
+def topics() -> dict:
+    return {"topics": [{"id": t.id, "label": t.label, "blurb": t.blurb} for t in CATALOG]}
+
+
+@app.get("/api/topics/expand")
+def topics_expand(q: str) -> dict:
+    q = q.strip()[:60]
+    if not q:
+        raise HTTPException(400, "Argomento vuoto")
+    return {"label": q, "keywords": expand_custom(q)}
+
+
+class FeedRequest(BaseModel):
+    topics: list[dict] = []
+    seen: list[str] = []
+    more: list[str] = []
+    less: list[str] = []
+    sections: dict[str, float] = {}
+    demo: bool = False
+
+
+@app.post("/api/feed")
+def feed(req: FeedRequest) -> dict:
+    """Edizione personalizzata: stessa base per tutti, ordine e binari per te.
+    Il profilo arriva dal browser e non viene salvato."""
+    edition = get_edition(demo=req.demo)
+    pool = edition.stories + [b for b in edition.blindspots if b.id not in {s.id for s in edition.stories}]
+    result = personalize(pool, req.model_dump())
+    return {
+        "edition": edition.model_copy(update={"stories": []}),
+        "for_you": result["for_you"],
+        "rails": result["rails"],
+        "blindspots": edition.blindspots,
+    }
+
+
+# --------------------------------------------------------------------------
 # Trasparenza
 # --------------------------------------------------------------------------
 
 
+@app.get("/api/status")
+def status() -> dict:
+    """Salute dell'aggregatore: ultimi giri, stato di ogni feed."""
+    from .db_orm import FeedState, RunLog
+
+    with SessionLocal() as db:
+        runs = db.query(RunLog).order_by(RunLog.started_at.desc()).limit(10).all()
+        feeds = db.query(FeedState).all()
+        return {
+            "llm": llm.provider(),
+            "embeddings": llm.embeddings_available(),
+            "schedule_minutes": SCHEDULE_MINUTES,
+            "runs": [
+                {"id": r.id, "started_at": r.started_at, "finished_at": r.finished_at, "ok": r.ok, **(r.data or {})}
+                for r in runs
+            ],
+            "feeds": [
+                {
+                    "source_id": f.source_id,
+                    "url": f.url,
+                    "healthy": (f.consecutive_failures or 0) == 0,
+                    "consecutive_failures": f.consecutive_failures,
+                    "paused_until": f.open_until,
+                    "last_ok_at": f.last_ok_at,
+                    "last_error": f.last_error,
+                    "last_entries": f.last_entries,
+                }
+                for f in sorted(feeds, key=lambda f: (-(f.consecutive_failures or 0), f.source_id or ""))
+            ],
+        }
+
+
+
 @app.get("/api/sources")
 def sources(demo: bool = False) -> dict:
-    from .edition import LAST_HEALTH
+    from .db_orm import FeedState
 
-    health = {h.source_id: {"ok": h.ok, "entries": h.entries, "error": h.error} for h in LAST_HEALTH}
+    with SessionLocal() as db:
+        health = {
+            f.source_id: {"ok": (f.consecutive_failures or 0) == 0, "entries": f.last_entries, "error": f.last_error}
+            for f in db.query(FeedState).all()
+        }
     items = real_sources()
     if demo or DEMO_MODE == "1":
         from .demo import DEMO_SOURCES

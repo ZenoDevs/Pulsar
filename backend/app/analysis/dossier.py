@@ -14,6 +14,7 @@ Flusso:
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from typing import Dict, List, Optional
 
@@ -22,6 +23,7 @@ from ..schemas import (
     Article,
     Divergence,
     Dossier,
+    Evidence,
     Fact,
     Framing,
     Interpretation,
@@ -30,10 +32,12 @@ from ..schemas import (
     Version,
 )
 from ..sources import get_source, is_agency, owner_group_of
+from .grounding import verify
 from .independence import independent_voices
 
 log = logging.getLogger("pulsar.dossier")
 
+PROMPT_VERSION = "dossier-v3"
 MAX_ARTICLES = 18
 CHARS_PER_ARTICLE = 1400
 STATUSES = ("confermato", "riportato", "contestato", "non_verificato")
@@ -61,13 +65,14 @@ Costruisci il dossier. Definizioni da rispettare alla lettera:
 - DOMANDE APERTE: cosa non si sa ancora e servirebbe sapere.
 
 Ogni fatto, interpretazione e versione DEVE citare gli articoli con i loro numeri. Non citare numeri che non esistono.
+Per ogni fatto aggiungi in "evidenze" una citazione LETTERALE (6-25 parole, copiata parola per parola) da ciascun articolo citato. Le citazioni vengono controllate automaticamente: se non si trovano nel testo, il fatto viene declassato.
 
 JSON:
 {{
   "titolo_neutro": "max 14 parole, soggetto-verbo-fatto",
   "sezione": "Politica|Esteri|Economia|Cronaca|Società|Cultura|Scienza|Sport",
   "sommario": "2-3 frasi con solo cio' che e' confermato",
-  "fatti": [{{"testo": "...", "stato": "confermato|riportato|contestato|non_verificato", "fonti": [1, 3], "nota": "opzionale, max 20 parole"}}],
+  "fatti": [{{"testo": "...", "stato": "confermato|riportato|contestato|non_verificato", "fonti": [1, 3], "evidenze": [{{"fonte": 1, "citazione": "..."}}, {{"fonte": 3, "citazione": "..."}}], "nota": "opzionale, max 20 parole"}}],
   "interpretazioni": [{{"testo": "...", "tipo": "opinione|previsione|causa|giudizio|attribuzione", "fonti": [2]}}],
   "divergenze": [{{"tema": "...", "versioni": [{{"racconto": "...", "fonti": [1]}}, {{"racconto": "...", "fonti": [4]}}]}}],
   "inquadramenti": [{{"etichetta": "max 5 parole", "cornice": "una frase", "parole_chiave": ["..."], "fonti": [2, 5]}}],
@@ -170,8 +175,40 @@ def apply_rules(fact: Fact, cited: List[Article], universe: Dict[str, Article]) 
     return fact
 
 
+def ground(raw_evidence, cited: List[Article], idx: Dict[int, Article]):
+    """Verifica le citazioni. Restituisce (evidenze, articoli ancora validi, articoli respinti).
+
+    Se il modello non ha fornito citazioni (es. vecchi dossier, demo), non si
+    respinge nulla: l'ancoraggio si applica solo dove c'e' qualcosa da verificare.
+    """
+    evidence: List[Evidence] = []
+    if not raw_evidence:
+        return evidence, cited, []
+    quoted: Dict[str, bool] = {}
+    for ev in raw_evidence:
+        if not isinstance(ev, dict):
+            continue
+        arts = _refs(ev.get("fonte"), idx)
+        quote = (ev.get("citazione") or "").strip()
+        if not arts or not quote:
+            continue
+        a = arts[0]
+        ok, m = verify(quote, a)
+        evidence.append(Evidence(article_id=a.id, source_id=a.source_id, quote=quote, verified=ok, match=m))
+        quoted[a.id] = quoted.get(a.id, False) or ok
+    rejected = [a for a in cited if a.id in quoted and not quoted[a.id]]
+    kept = [a for a in cited if a not in rejected]
+    return evidence, kept, rejected
+
+
+def input_hash(articles: List[Article]) -> str:
+    raw = "|".join(f"{a.id}:{len(a.body or a.snippet or '')}" for a in articles)
+    return hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+
 def parse_dossier(data: dict, selected: List[Article], universe: Dict[str, Article]) -> Dossier:
     idx = {i: a for i, a in enumerate(selected, 1)}
+    grounding_ok = grounding_tot = 0
 
     facts: List[Fact] = []
     for n, f in enumerate(data.get("fatti") or [], 1):
@@ -180,9 +217,22 @@ def parse_dossier(data: dict, selected: List[Article], universe: Dict[str, Artic
             continue
         status = f.get("stato") if f.get("stato") in STATUSES else "non_verificato"
         cited = _refs(f.get("fonti"), idx)
+        evidence, cited, rejected = ground(f.get("evidenze"), cited, idx)
+        grounding_tot += len(evidence)
+        grounding_ok += sum(1 for e in evidence if e.verified)
         aids, sids = _ids(cited)
-        fact = Fact(id=f"F{n}", text=text, status=status, article_ids=aids, source_ids=sids, note=f.get("nota") or None)
-        facts.append(apply_rules(fact, cited, universe))
+        fact = Fact(
+            id=f"F{n}", text=text, status=status, article_ids=aids, source_ids=sids,
+            note=f.get("nota") or None, evidence=evidence,
+        )
+        fact = apply_rules(fact, cited, universe)
+        if rejected and not cited:
+            fact.downgraded_from = fact.downgraded_from or (status if status != "non_verificato" else None)
+            fact.status = "non_verificato"
+            fact.verification = "Le citazioni indicate dal modello non si ritrovano negli articoli."
+        elif rejected:
+            fact.verification = (fact.verification or "") + f" {len(rejected)} citazione non ritrovata: fonte esclusa."
+        facts.append(fact)
 
     interps = []
     for it in data.get("interpretazioni") or []:
@@ -263,6 +313,9 @@ def parse_dossier(data: dict, selected: List[Article], universe: Dict[str, Artic
         context=(data.get("contesto") or "").strip() or None,
         section=(data.get("sezione") or "").strip() or None,
         generated_by=f"{llm.provider() or 'n.d.'}",
+        prompt_version=PROMPT_VERSION,
+        input_hash=input_hash(selected),
+        grounding={"verified": grounding_ok, "total": grounding_tot} if grounding_tot else None,
     )
 
 
@@ -278,8 +331,9 @@ def build_dossier(articles: List[Article]) -> Optional[Dossier]:
             PROMPT.format(articles=format_articles(selected)),
             system=SYSTEM,
             tier="deep",
-            max_tokens=4000,
+            max_tokens=6000,
             temperature=0.1,
+            required_keys=("fatti", "titolo_neutro"),
         )
     except Exception as e:
         log.warning("Dossier non generato: %s", e)

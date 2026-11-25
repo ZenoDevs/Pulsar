@@ -74,6 +74,36 @@ class StoryRecord(Base):
     score = Column(Float, default=0.0)
     data = Column(JSON)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, index=True)
+    active = Column(Boolean, default=True, index=True)
+    signature = Column(String, nullable=True)
+
+
+class FeedState(Base):
+    """Stato di salute di un feed: GET condizionali e circuit breaker."""
+    __tablename__ = "feed_state"
+
+    url = Column(String, primary_key=True)
+    source_id = Column(String, index=True)
+    etag = Column(String, nullable=True)
+    last_modified = Column(String, nullable=True)
+    consecutive_failures = Column(Integer, default=0)
+    open_until = Column(DateTime, nullable=True)
+    last_ok_at = Column(DateTime, nullable=True)
+    last_checked_at = Column(DateTime, nullable=True)
+    last_error = Column(Text, nullable=True)
+    last_entries = Column(Integer, default=0)
+
+
+class RunLog(Base):
+    """Un giro dell'aggregatore: tempi per fase, conteggi, errori."""
+    __tablename__ = "runs"
+
+    id = Column(String, primary_key=True)
+    started_at = Column(DateTime, default=datetime.utcnow, index=True)
+    finished_at = Column(DateTime, nullable=True)
+    ok = Column(Boolean, default=False)
+    data = Column(JSON)
 
 
 class EditionRecord(Base):
@@ -95,13 +125,19 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 def init_db():
     """Crea le tabelle e applica le piccole migrazioni additive."""
     Base.metadata.create_all(bind=engine)
-    try:
-        cols = {c["name"] for c in inspect(engine).get_columns("articles")}
-        if "orientation_score" not in cols:
-            with engine.begin() as conn:
-                conn.execute(text("ALTER TABLE articles ADD COLUMN orientation_score FLOAT"))
-    except Exception as e:  # pragma: no cover
-        print(f"Migrazione articles.orientation_score non applicata: {e}")
+    additive = {
+        "articles": [("orientation_score", "FLOAT")],
+        "stories": [("updated_at", "TIMESTAMP"), ("active", "BOOLEAN"), ("signature", "VARCHAR")],
+    }
+    for table, columns in additive.items():
+        try:
+            existing = {c["name"] for c in inspect(engine).get_columns(table)}
+            for name, sqltype in columns:
+                if name not in existing:
+                    with engine.begin() as conn:
+                        conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {sqltype}"))
+        except Exception as e:  # pragma: no cover
+            print(f"Migrazione {table} non applicata: {e}")
 
 def get_db():
     """Dependency for FastAPI to get DB session."""
@@ -280,15 +316,37 @@ def get_latest_article_date(db: Session, query: str) -> Optional[datetime]:
 
 # --- Storie ed edizioni -------------------------------------------------------
 
-def save_story(db: Session, story, edition_id: str = None):
-    rec = db.get(StoryRecord, story.id) or StoryRecord(id=story.id)
-    rec.edition_id = edition_id
+def save_story(db: Session, story, edition_id: str = None, signature: str = None, active: bool = True):
+    rec = db.get(StoryRecord, story.id) or StoryRecord(id=story.id, created_at=datetime.utcnow())
+    rec.edition_id = edition_id or rec.edition_id
     rec.query = story.query
     rec.title = story.title
     rec.score = story.score
     rec.data = json.loads(story.model_dump_json())
+    rec.updated_at = datetime.utcnow()
+    rec.active = active
+    if signature:
+        rec.signature = signature
     db.merge(rec)
     db.commit()
+
+
+def active_story_records(db: Session, since: datetime):
+    return (
+        db.query(StoryRecord)
+        .filter(StoryRecord.active.is_(True), or_(StoryRecord.query == "", StoryRecord.query.is_(None)), StoryRecord.updated_at >= since)
+        .all()
+    )
+
+
+def deactivate_stale_stories(db: Session, before: datetime) -> int:
+    n = (
+        db.query(StoryRecord)
+        .filter(StoryRecord.active.is_(True), StoryRecord.updated_at < before)
+        .update({StoryRecord.active: False}, synchronize_session=False)
+    )
+    db.commit()
+    return n
 
 
 def load_story(db: Session, story_id: str):
