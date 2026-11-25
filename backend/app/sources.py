@@ -85,7 +85,7 @@ _SOURCES: List[SourceInfo] = [
         feeds=["https://www.agi.it/rss"],
         ownership_verified=True,
         ownership_source="https://www.eni.com/en-IT/company/subsidiaries-and-affiliates/agi.html",
-        note="Agenzia controllata da Eni (societa' a partecipazione pubblica).",
+        note="Agenzia controllata da Eni (società a partecipazione pubblica).",
     ),
     # --- Quotidiani nazionali ---------------------------------------------
     SourceInfo(
@@ -185,7 +185,7 @@ _SOURCES: List[SourceInfo] = [
         owner="Fondazione (ex Carlo De Benedetti)", owner_group="domani",
         homepage="https://www.editorialedomani.it",
         feeds=["https://www.editorialedomani.it/rss"],
-        note="Il controllo e' passato nel 2025 a una fondazione: dettagli da verificare.",
+        note="Il controllo è passato nel 2025 a una fondazione: dettagli da verificare.",
     ),
     SourceInfo(
         id="il_foglio", name="Il Foglio", kind="quotidiano", orientation=0.3,
@@ -209,7 +209,7 @@ _SOURCES: List[SourceInfo] = [
         feeds=["https://www.open.online/feed/"],
         ownership_verified=True,
         ownership_source="https://www.firstonline.info/?p=203721",
-        note="Societa' senza scopo di lucro. Quote riferite alla fondazione (2018).",
+        note="Società senza scopo di lucro. Quote riferite alla fondazione (2018).",
     ),
     SourceInfo(
         id="fanpage", name="Fanpage", kind="online", orientation=-0.4,

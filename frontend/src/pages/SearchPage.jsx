@@ -1,127 +1,51 @@
-import React from "react";
-import StoryCard from "../components/StoryCard";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { StoryRow } from "../components/StoryItems";
+import { api, poll } from "../lib/api";
 
-const SearchPage = ({
-  query,
-  setQuery,
-  stories,
-  setStories,
-  loading,
-  setLoading,
-  error,
-  setError,
-  searched,
-  setSearched,
-}) => {
-  const [statusMessage, setStatusMessage] = React.useState("");
+export default function SearchPage() {
+  const [params] = useSearchParams();
+  const q = params.get("q") || "";
+  const [result, setResult] = useState({ q: null });
 
-  const handleSearch = async (e) => {
-    e.preventDefault();
-    if (!query.trim()) return;
+  useEffect(() => {
+    if (!q) return;
+    let stop = () => {};
+    api
+      .search(q)
+      .then(({ job_id }) => {
+        stop = poll(() => api.searchStatus(job_id), (s) => setResult({ ...s, q }));
+      })
+      .catch((e) => setResult({ q, status: "failed", message: e.message }));
+    return () => stop();
+  }, [q]);
 
-    setLoading(true);
-    setError(null);
-    setStories([]);
-    setSearched(true);
-    setStatusMessage("Avvio ricerca...");
-
-    try {
-      const response = await fetch("http://127.0.0.1:8000/api/search", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ query: query }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Network response was not ok");
-      }
-
-      const data = await response.json();
-      const jobId = data.job_id;
-
-      // Polling logic
-      const pollInterval = setInterval(async () => {
-        try {
-          const statusRes = await fetch(
-            `http://127.0.0.1:8000/api/search/status/${jobId}`
-          );
-          if (!statusRes.ok) throw new Error("Errore status");
-
-          const statusData = await statusRes.json();
-          setStatusMessage(statusData.message || "Elaborazione...");
-
-          if (statusData.status === "completed") {
-            clearInterval(pollInterval);
-            setStories(statusData.stories);
-            setLoading(false);
-            setStatusMessage("");
-          } else if (statusData.status === "failed") {
-            clearInterval(pollInterval);
-            setError("La ricerca è fallita.");
-            setLoading(false);
-            setStatusMessage("");
-          }
-        } catch (err) {
-          clearInterval(pollInterval);
-          setError("Errore di comunicazione col server.");
-          setLoading(false);
-          console.error(err);
-        }
-      }, 1000);
-    } catch (err) {
-      setError(
-        "Errore durante la ricerca. Assicurati che il backend sia attivo."
-      );
-      console.error(err);
-      setLoading(false);
-    }
-  };
+  const state = !q ? { status: "idle" } : result.q === q ? result : { status: "pending", message: "Avvio la ricerca…" };
 
   return (
-    <div className="search-page">
-      <section className="search-section">
-        <form onSubmit={handleSearch} className="search-form">
-          <input
-            type="text"
-            placeholder="Cerca un argomento (es. manovra, AI, immigrazione)..."
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            className="search-input"
-          />
-          <button type="submit" disabled={loading} className="search-button">
-            {loading ? "..." : "Cerca"}
-          </button>
-        </form>
-        {loading && (
-          <div className="loader-container" style={{ height: "40vh" }}>
-            <div className="pulsar-loader"></div>
-            <div className="loader-text">{statusMessage}</div>
-          </div>
-        )}
-        {error && <p className="error-message">{error}</p>}
-      </section>
-
-      <main className="stories-list">
-        {stories.length > 0 ? (
-          <div className="stories-grid">
-            {stories.map((story) => (
-              <StoryCard key={story.id} story={story} />
+    <main className="search">
+      <h1 className="search-title">{q ? <>Ricerca: {q}</> : "Cerca un argomento"}</h1>
+      {!q && <p className="search-hint">Scrivi un tema nella barra in alto: Pulsar cerca negli archivi delle testate e raggruppa gli articoli per fatto.</p>}
+      {(state.status === "pending" || state.status === "processing") && (
+        <p className="state state--loading" aria-live="polite">
+          {state.message}
+        </p>
+      )}
+      {state.status === "failed" && (
+        <p className="state">
+          La ricerca non è riuscita: {state.message}. Controlla che il backend sia attivo e riprova.
+        </p>
+      )}
+      {state.status === "completed" &&
+        (state.stories?.length ? (
+          <section className="edition-list">
+            {state.stories.map((s) => (
+              <StoryRow key={s.id} s={s} />
             ))}
-          </div>
+          </section>
         ) : (
-          searched &&
-          !loading &&
-          !error && (
-            <p className="no-results">
-              Nessuna storia trovata per questa ricerca.
-            </p>
-          )
-        )}
-      </main>
-    </div>
+          <p className="state">Nessun articolo trovato per “{q}”. Prova con un termine più generale.</p>
+        ))}
+    </main>
   );
-};
-
-export default SearchPage;
+}
