@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { BlindspotItem, StoryLead, StoryRow } from "../components/StoryItems";
+import { Briefing, GuessGame, WordOfDay } from "../components/Engage";
+import { BlindspotItem, Hero, StoryRow } from "../components/StoryItems";
 import { api, poll } from "../lib/api";
 import { ago, plural, today } from "../lib/format";
 
@@ -10,6 +11,7 @@ export default function EditionPage() {
   const [edition, setEdition] = useState(null);
   const [error, setError] = useState(null);
   const [job, setJob] = useState(null);
+  const [section, setSection] = useState("Tutte");
 
   const load = () =>
     api
@@ -49,61 +51,91 @@ export default function EditionPage() {
   if (!edition) return <div className="state state--loading">Carico la prima pagina…</div>;
 
   const [lead, ...rest] = edition.stories;
+  const sections = ["Tutte", ...new Set(rest.map((s) => s.section).filter(Boolean))];
+  const visible = section === "Tutte" ? rest : rest.filter((s) => s.section === section);
 
   return (
     <main className="edition">
-      {edition.demo && (
-        <p className="demo-note">
-          Edizione dimostrativa: testate, luoghi e fatti sono inventati per mostrare come funziona Pulsar.{" "}
-          {!demo && "Genera un'edizione reale per sostituirla."}
-        </p>
-      )}
-
-      <div className="edition-head">
-        <h1 className="edition-date">{today()}</h1>
+      <div className="edition-bar">
+        <p className="edition-date">{today()}</p>
         <p className="edition-stats">
           {plural(edition.stories.length, "storia", "storie")} da {plural(edition.sources_ok, "testata", "testate")},{" "}
-          {edition.articles_analyzed} articoli letti e confrontati. Aggiornata {ago(edition.generated_at)}.
+          {edition.articles_analyzed} articoli confrontati. Aggiornata {ago(edition.generated_at)}.
         </p>
-        {!demo && (
+        {!demo && !edition.demo && (
           <button className="btn-quiet" onClick={refresh} disabled={!!job}>
-            {job ? job.message || "Aggiorno…" : "Aggiorna l'edizione"}
+            {job ? job.message || "Aggiorno…" : "Aggiorna"}
           </button>
         )}
       </div>
 
-      {lead && <StoryLead s={lead} />}
+      {edition.demo && (
+        <p className="demo-note">
+          Edizione dimostrativa: testate, luoghi e fatti sono inventati per mostrare come funziona Pulsar.
+          {!demo && (
+            <>
+              {" "}
+              <button className="demo-btn" onClick={refresh} disabled={!!job}>
+                {job ? job.message || "Genero l'edizione…" : "Genera l'edizione di oggi"}
+              </button>
+            </>
+          )}
+        </p>
+      )}
 
-      <div className="edition-body">
-        <section className="edition-list" aria-label="Altre storie">
-          {rest.map((s) => (
-            <StoryRow key={s.id} s={s} />
-          ))}
-        </section>
+      {lead && <Hero s={lead} />}
 
-        <aside className="edition-aside">
-          <section className="aside-block">
-            <h2>Punti ciechi</h2>
-            <p className="aside-intro">Storie raccontate da una parte sola. Se leggi solo l'altra, non le hai viste.</p>
-            {edition.blindspots.length ? (
-              <ul className="blind-list">
-                {edition.blindspots.map((s) => (
-                  <BlindspotItem key={s.id} s={s} />
-                ))}
-              </ul>
-            ) : (
-              <p className="aside-intro">Oggi nessuna storia rilevante è coperta da una parte sola.</p>
-            )}
+      <div className="wrap">
+        {rest.length > 0 && <Briefing stories={rest.slice(0, 5)} />}
+
+        <div className="edition-body">
+          <section className="edition-list" aria-labelledby="list-h">
+            <div className="list-head">
+              <h2 id="list-h">Le altre storie</h2>
+              {sections.length > 2 && (
+                <div className="chips-filter" role="group" aria-label="Filtra per sezione">
+                  {sections.map((s) => (
+                    <button key={s} type="button" aria-pressed={section === s} onClick={() => setSection(s)}>
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            {visible.map((s) => (
+              <StoryRow key={s.id} s={s} />
+            ))}
           </section>
-          <section className="aside-block aside-key">
-            <h2>Come leggere Pulsar</h2>
-            <p>
-              Ogni tassello colorato è un fatto: il colore dice quanto è solido, mai da che parte sta. Le posizioni sull'asse sono
-              testate, non opinioni nostre.
-            </p>
-            <Link to="/fonti">Fonti, proprietà e metodo</Link>
-          </section>
-        </aside>
+
+          <aside className="edition-aside">
+            <GuessGame stories={edition.stories} />
+
+            <section className="aside-block">
+              <h2>Punti ciechi</h2>
+              <p className="aside-intro">Storie raccontate da una parte sola. Se leggi solo l'altra, non le hai viste.</p>
+              {edition.blindspots.length ? (
+                <ul className="blind-list">
+                  {edition.blindspots.map((s) => (
+                    <BlindspotItem key={s.id} s={s} />
+                  ))}
+                </ul>
+              ) : (
+                <p className="aside-intro">Oggi nessuna storia rilevante è coperta da una parte sola.</p>
+              )}
+            </section>
+
+            <WordOfDay stories={edition.stories} />
+
+            <section className="aside-block aside-key">
+              <h2>Come leggere Pulsar</h2>
+              <p>
+                Ogni tassello colorato è un fatto: il colore dice quanto è solido, mai da che parte sta. Le posizioni sull'asse sono
+                testate, non opinioni nostre.
+              </p>
+              <Link to="/fonti">Fonti, proprietà e metodo</Link>
+            </section>
+          </aside>
+        </div>
       </div>
     </main>
   );

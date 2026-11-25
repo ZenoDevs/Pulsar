@@ -17,7 +17,8 @@ from .analysis.metrics import compute_metrics, story_score
 from .clustering import cluster_articles_into_stories
 from .db_orm import SessionLocal, get_article_by_url, save_article, save_story
 from .ingest.rss import extract_full_text
-from .schemas import Article, Edition, Story, StorySummary
+from .schemas import Article, Edition, Headline, Story, StorySummary
+from .sources import get_source
 from .services.openai_service import enrich_article_smart, fuse_bias
 
 log = logging.getLogger("pulsar.pipeline")
@@ -124,8 +125,23 @@ def summarize(story: Story) -> StorySummary:
     if d:
         order = {"confermato": 0, "contestato": 1, "riportato": 2, "non_verificato": 3}
         key = sorted(d.facts, key=lambda f: order.get(f.status, 9))[:3]
+    headlines = []
+    seen = set()
+    for a in sorted(story.articles, key=lambda a: (bool(a.echo_of), a.published_at is None)):
+        src = get_source(a.source_id)
+        if not src or a.source_id in seen:
+            continue
+        seen.add(a.source_id)
+        headlines.append(
+            Headline(source_id=a.source_id, source_name=src.name, orientation=src.orientation, title=a.title, url=a.url)
+        )
+    headlines.sort(key=lambda h: h.orientation)
+    image = next((a.image_url for a in story.articles if a.image_url), None)
     return StorySummary(
         id=story.id,
+        headlines=headlines,
+        loaded_terms=d.loaded_language[:3] if d else [],
+        image_url=image,
         title=story.title,
         summary=d.summary if d else (story.articles[0].snippet if story.articles else None),
         section=story.section,

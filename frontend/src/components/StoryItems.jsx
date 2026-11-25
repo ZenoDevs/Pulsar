@@ -1,64 +1,63 @@
 import { Link } from "react-router-dom";
-import { Fingerprint, IndependenceLine, Spectrum, StatusTag } from "./Instruments";
-import { ago, plural, sourceNames } from "../lib/format";
+import HeadlineDial from "./HeadlineDial";
+import { Fingerprint, IndependenceLine, Spectrum } from "./Instruments";
+import StoryCover from "./StoryCover";
+import { ago, plural } from "../lib/format";
 
 function Meta({ s }) {
   return (
     <p className="meta">
       {s.section && <span className="meta-section">{s.section}</span>}
-      <span>{plural(s.stats.total_articles, "articolo", "articoli")}</span>
       <span>{plural(Object.keys(s.stats.by_source).length, "testata", "testate")}</span>
       {s.stats.last_published_at && <span>{ago(s.stats.last_published_at)}</span>}
     </p>
   );
 }
 
-export function StoryLead({ s }) {
-  const names = sourceNames(s);
+/** Il fatto del giorno: fascia scura a tutta larghezza. */
+export function Hero({ s }) {
   const m = s.metrics;
+  const ind = m?.independence;
   return (
-    <article className="lead">
-      <div className="lead-main">
-        <Meta s={s} />
-        <h2 className="lead-title">
-          <Link to={`/storia/${s.id}`}>{s.title}</Link>
-        </h2>
-        {s.summary && <p className="lead-summary">{s.summary}</p>}
-        {s.key_facts.length > 0 && (
-          <ul className="lead-facts">
-            {s.key_facts.map((f) => (
-              <li key={f.id}>
-                <StatusTag status={f.status} />
-                <span>{f.text}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-        {s.top_divergence && (
-          <div className="lead-div">
-            <h3>Dove non concordano: {s.top_divergence.topic.toLowerCase()}</h3>
-            <div className="lead-div-cols">
-              {s.top_divergence.versions.slice(0, 2).map((v, i) => (
-                <p key={i}>
-                  <span className="lead-div-who">{v.source_ids.map((id) => names[id] || id).join(", ")}</span>
-                  {v.account}
-                </p>
-              ))}
-            </div>
+    <section className="hero" aria-labelledby="hero-title">
+      <div className="hero-inner">
+        <div className="hero-main">
+          <p className="hero-kicker">
+            Il fatto del giorno{s.section && <span>{s.section}</span>}
+            {s.stats.last_published_at && <span>{ago(s.stats.last_published_at)}</span>}
+          </p>
+          <h1 id="hero-title" className="hero-title">
+            <Link to={`/storia/${s.id}`}>{s.title}</Link>
+          </h1>
+          {s.summary && <p className="hero-summary">{s.summary}</p>}
+          <HeadlineDial headlines={s.headlines || []} />
+        </div>
+
+        <aside className="hero-side">
+          <div className="hero-stat">
+            <span className="hero-num">{ind?.independent_voices ?? "–"}</span>
+            <span>
+              voci indipendenti
+              <br />
+              su {plural(ind?.articles ?? 0, "articolo", "articoli")}
+            </span>
           </div>
-        )}
-        <Link className="more" to={`/storia/${s.id}`}>
-          Apri il dossier
-        </Link>
+          <div>
+            <h2 className="side-h">Quanto è solida</h2>
+            <Fingerprint counts={m?.status_counts} size="lg" showLegend animate />
+          </div>
+          {s.top_divergence && (
+            <div className="hero-div">
+              <h2 className="side-h">Non concordano su</h2>
+              <p>{s.top_divergence.topic}</p>
+            </div>
+          )}
+          <Link className="hero-cta" to={`/storia/${s.id}`}>
+            Apri il dossier completo
+          </Link>
+        </aside>
       </div>
-      <aside className="lead-side">
-        <h3 className="side-h">Quanto è solida</h3>
-        <Fingerprint counts={m?.status_counts} size="lg" showLegend animate />
-        <h3 className="side-h">Chi la racconta</h3>
-        <Spectrum points={m?.spectrum} mean={m?.mean_orientation} />
-        <IndependenceLine ind={m?.independence} />
-      </aside>
-    </article>
+    </section>
   );
 }
 
@@ -66,12 +65,24 @@ export function StoryRow({ s }) {
   const m = s.metrics;
   return (
     <article className="row">
-      <div>
+      <Link to={`/storia/${s.id}`} className="row-cover" tabIndex={-1} aria-hidden>
+        <StoryCover story={s} />
+      </Link>
+      <div className="row-text">
         <Meta s={s} />
         <h3 className="row-title">
           <Link to={`/storia/${s.id}`}>{s.title}</Link>
         </h3>
         {s.summary && <p className="row-summary">{s.summary}</p>}
+        {s.top_divergence && (
+          <p className="row-div">
+            <span className="tag st-contestato">
+              <span className="tag-dot" aria-hidden />
+              Non concordano
+            </span>{" "}
+            {s.top_divergence.topic}
+          </p>
+        )}
       </div>
       <div className="row-instr">
         <Fingerprint counts={m?.status_counts} />

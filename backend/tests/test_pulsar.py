@@ -122,3 +122,26 @@ def test_api_demo_edition_and_story():
     ponte = c.get("/api/story/demo-1").json()
     f5 = next(f for f in ponte["dossier"]["facts"] if f["id"] == "F5")
     assert f5["status"] == "riportato" and f5["downgraded_from"] == "confermato"
+
+
+def test_rss_image_extraction():
+    from app.ingest.rss import parse_feed
+
+    rss = b"""<?xml version="1.0"?><rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/"><channel><title>t</title>
+    <item><title>Uno</title><link>https://x.it/1</link><media:content url="https://x.it/a.jpg" medium="image"/></item>
+    <item><title>Due</title><link>https://x.it/2</link><enclosure url="https://x.it/b.jpg" type="image/jpeg" length="1"/></item>
+    <item><title>Tre</title><link>https://x.it/3</link><description>&lt;img src="https://x.it/c.jpg"&gt; testo</description></item>
+    </channel></rss>"""
+    arts = parse_feed(SOURCES["ansa"], rss)
+    assert [a.image_url for a in arts] == ["https://x.it/a.jpg", "https://x.it/b.jpg", "https://x.it/c.jpg"]
+
+
+def test_summary_has_headlines_ordered_by_orientation():
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+
+    e = TestClient(app).get("/api/edition?demo=1").json()
+    hl = e["stories"][0]["headlines"]
+    assert len(hl) >= 5
+    assert [h["orientation"] for h in hl] == sorted(h["orientation"] for h in hl)

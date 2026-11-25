@@ -28,6 +28,7 @@ class Article(BaseModel):
     snippet: str = ""
     body: Optional[str] = None
     url: Optional[str] = None
+    image_url: Optional[str] = None
     published_at: Optional[datetime] = None
     raw_date: Optional[str] = None
     embedding: Optional[List[float]] = Field(None, exclude=True)
@@ -186,6 +187,16 @@ class Story(BaseModel):
     analysis: Optional[str] = None
 
 
+class Headline(BaseModel):
+    """Il titolo con cui una testata ha dato la notizia."""
+
+    source_id: str
+    source_name: str
+    orientation: float
+    title: str
+    url: Optional[str] = None
+
+
 class StorySummary(BaseModel):
     """Versione leggera per la prima pagina."""
 
@@ -197,6 +208,9 @@ class StorySummary(BaseModel):
     metrics: Optional[StoryMetrics] = None
     key_facts: List[Fact] = []
     top_divergence: Optional[Divergence] = None
+    headlines: List[Headline] = []
+    loaded_terms: List[LoadedTerm] = []
+    image_url: Optional[str] = None
     score: float = 0.0
 
 

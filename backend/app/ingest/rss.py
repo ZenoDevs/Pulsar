@@ -59,6 +59,24 @@ def _entry_date(entry) -> Optional[datetime]:
     return None
 
 
+def _entry_image(e) -> Optional[str]:
+    """Immagine dell'articolo dai campi media RSS, dagli enclosure o dal primo <img>."""
+    for key in ("media_content", "media_thumbnail"):
+        for m in e.get(key) or []:
+            url = m.get("url")
+            if url and (m.get("medium") in (None, "image") or "image" in (m.get("type") or "image")):
+                return url
+    for enc in e.get("enclosures") or []:
+        if (enc.get("type") or "").startswith("image") and enc.get("href"):
+            return enc["href"]
+    for html in [e.get("summary", "")] + [c.get("value", "") for c in e.get("content") or []]:
+        if html and "<img" in html:
+            img = BeautifulSoup(html, "html.parser").find("img")
+            if img and img.get("src", "").startswith("http"):
+                return img["src"]
+    return None
+
+
 def parse_feed(source: SourceInfo, content: bytes) -> List[Article]:
     parsed = feedparser.parse(content)
     out = []
@@ -84,6 +102,7 @@ def parse_feed(source: SourceInfo, content: bytes) -> List[Article]:
                 snippet=summary[:600],
                 body=body if body and len(body) > len(summary) + 200 else None,
                 url=link,
+                image_url=_entry_image(e),
                 published_at=_entry_date(e),
             )
         )
