@@ -211,6 +211,11 @@ export async function checkCard(result) {
 
 /** Condivide con il foglio nativo se c'è (telefono), altrimenti scarica. */
 export async function shareBlob(blob, filename, text) {
+  if (import.meta.env.VITE_STATIC === "1") {
+    // Dentro una pagina ospitata download e condivisione sono bloccati: mostriamo l'immagine.
+    window.dispatchEvent(new CustomEvent("pulsar:preview", { detail: { url: URL.createObjectURL(blob), text } }));
+    return "shown";
+  }
   const file = new File([blob], filename, { type: "image/png" });
   if (navigator.canShare?.({ files: [file] })) {
     try {

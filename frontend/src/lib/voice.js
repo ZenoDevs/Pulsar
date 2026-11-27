@@ -4,7 +4,7 @@
 
 import { postBlob } from "./api";
 
-let useServer = true;
+let useServer = import.meta.env.VITE_STATIC !== "1";
 let current = null;
 
 function browserSpeak(text) {

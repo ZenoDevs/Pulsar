@@ -1,3 +1,5 @@
+import { staticApi } from "./static";
+
 // In sviluppo il backend gira a parte; in produzione e' sulla stessa origine.
 const BASE = import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? "http://127.0.0.1:8000" : "");
 
@@ -33,7 +35,9 @@ export async function postBlob(path, body) {
   return r.blob();
 }
 
-export const api = {
+export const IS_STATIC = import.meta.env.VITE_STATIC === "1";
+
+const serverApi = {
   edition: (demo) => get(`/api/edition${demo ? "?demo=1" : ""}`),
   story: (id) => get(`/api/story/${id}`),
   sources: (demo) => get(`/api/sources${demo ? "?demo=1" : ""}`),
@@ -48,6 +52,9 @@ export const api = {
   updates: (follow, demo) => post("/api/stories/updates", { follow, demo }),
   searchStatus: (id) => get(`/api/search/status/${id}`),
 };
+
+export const api = IS_STATIC ? staticApi : serverApi;
+
 
 /** Esegue un polling finché il job non termina. */
 export function poll(fn, onUpdate, interval = 1200) {

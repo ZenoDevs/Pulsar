@@ -116,7 +116,7 @@ export function CheckResultView({ r }) {
 
       <div className="verdict-actions">
         <button className="btn-line" onClick={share}>
-          {shared === "downloaded" ? "Immagine scaricata" : shared === "shared" ? "Condivisa" : "Condividi il verdetto"}
+          {shared === "shown" ? "Condividi il verdetto" : shared === "downloaded" ? "Immagine scaricata" : shared === "shared" ? "Condivisa" : "Condividi il verdetto"}
         </button>
         <p className="verdict-method">
           Cercato tra {r.stories_searched} storie di oggi. Metodo: {r.method}.

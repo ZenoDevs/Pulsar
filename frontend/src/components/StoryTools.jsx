@@ -119,7 +119,7 @@ export function ShareButton({ summary, light = false }) {
   };
   return (
     <button className={`btn-line${light ? " btn-line--light" : ""}`} onClick={share} disabled={state === "busy"}>
-      {state === "downloaded" ? "Immagine scaricata" : state === "shared" ? "Condivisa" : state === "busy" ? "Preparo l'immagine…" : "Condividi"}
+      {state === "shown" ? "Condividi" : state === "downloaded" ? "Immagine scaricata" : state === "shared" ? "Condivisa" : state === "busy" ? "Preparo l'immagine…" : "Condividi"}
     </button>
   );
 }

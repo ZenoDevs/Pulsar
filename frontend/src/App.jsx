@@ -1,4 +1,6 @@
-import { BrowserRouter, Link, Route, Routes, useLocation } from "react-router-dom";
+import { BrowserRouter, Link, MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import ImagePreview from "./components/ImagePreview";
+import { IS_STATIC } from "./lib/api";
 import Masthead from "./components/Masthead";
 import Briefing from "./pages/Briefing";
 import Home from "./pages/Home";
@@ -21,6 +23,14 @@ function Shell() {
       <a href="#contenuto" className="skip">
         Vai al contenuto
       </a>
+      {IS_STATIC && !immersive && (
+        <p className="static-note">
+          Versione dimostrativa: testate e fatti inventati, tutto gira nel browser.{" "}
+          <a href="https://github.com/ZenoDevs/Pulsar" target="_blank" rel="noreferrer">
+            Il codice completo
+          </a>
+        </p>
+      )}
       {!immersive && <Masthead />}
       <div id="contenuto">
         <Routes>
@@ -55,10 +65,15 @@ function Shell() {
   );
 }
 
+// La versione statica gira dentro una pagina ospitata: niente URL da gestire,
+// la navigazione resta in memoria.
+const Router = IS_STATIC ? MemoryRouter : BrowserRouter;
+
 export default function App() {
   return (
-    <BrowserRouter>
+    <Router>
       <Shell />
-    </BrowserRouter>
+      <ImagePreview />
+    </Router>
   );
 }

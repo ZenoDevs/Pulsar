@@ -29,3 +29,4 @@ backend/cache.db
 # Pulsar
 *.db
 backend/pulsar-test.db
+frontend/dist-static/

@@ -305,6 +305,10 @@ def _numbers(result: CheckResult, claim: str, story: Story) -> CheckResult:
         result.claim_numbers = sorted(cn)
         return result
     texts = [m.text for m in result.matches if m.kind in ("fatto", "versione", "titolo")]
+    # anche i fatti della storia vicini all'affermazione, detti con altre parole
+    if story.dossier and story.dossier.facts:
+        fs = similarities(claim, [f.text for f in story.dossier.facts])
+        texts += [f.text for f, v in zip(story.dossier.facts, fs) if v >= 0.15]
     sn = set()
     for t in texts:
         sn |= numbers_in(t)
