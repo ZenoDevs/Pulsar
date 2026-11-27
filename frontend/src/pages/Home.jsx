@@ -3,6 +3,8 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { BlindspotBand, Card, Rail } from "../components/Cards";
 import Cover from "../components/Cover";
 import { GuessGame, WordOfDay } from "../components/Engage";
+import Followed from "../components/Followed";
+import { CheckPrompt } from "../components/Verify";
 import HeadlineDial from "../components/HeadlineDial";
 import { Fingerprint } from "../components/Instruments";
 import { api, poll } from "../lib/api";
@@ -121,6 +123,9 @@ export default function Home() {
           <p className="home-sub">
             {today()}. {plural(for_you.length, "storia", "storie")} da {plural(edition.sources_ok, "testata", "testate")}
             {forYouCount > 0 && <>, {forYouCount} sui tuoi argomenti</>}. Aggiornata {ago(edition.generated_at)}.
+            {profile.streak?.count > 1 && profile.streak.last === new Date().toLocaleDateString("sv-SE") && (
+              <span className="home-streak"> Briefing letto {profile.streak.count} giorni di fila.</span>
+            )}
           </p>
         </div>
         <div className="home-actions">
@@ -146,7 +151,18 @@ export default function Home() {
 
       {lead && <CoverStory s={lead} />}
 
+      <section className="checkband" aria-labelledby="checkband-h">
+        <div className="checkband-inner">
+          <div>
+            <h2 id="checkband-h">Hai sentito qualcosa?</h2>
+            <p>Incolla una frase vista sui social o in una chat. Ti diciamo se le testate la confermano, la smentiscono o non ne parlano.</p>
+          </div>
+          <CheckPrompt demo={demo} />
+        </div>
+      </section>
+
       <div className="home-wrap">
+        <Followed demo={demo} />
         {railsShown.map((r) => (
           <Rail key={r.id} kicker="Perché lo segui" title={r.label} stories={r.stories} />
         ))}

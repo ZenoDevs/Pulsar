@@ -119,7 +119,7 @@ class CheckResult(BaseModel):
     claim_numbers: List[float] = []
     source_numbers: List[float] = []
     numbers_mismatch: bool = False
-    method: str = "similarita"
+    method: str = "confronto testuale"
     stories_searched: int = 0
 
 
@@ -231,7 +231,7 @@ def check_claim(claim: str, stories: List[Story]) -> CheckResult:
         if result.verdict == "contestato":
             versions = [m for m in matches if m.kind == "versione"]
             if versions:
-                result.explanation += " " + " ".join(f"Per {', '.join(v.source_names)}: {v.text.split(': ', 1)[-1]}" for v in versions[:2])
+                result.explanation += " " + " ".join(f"Per {', '.join(v.source_names)}: {_lc(v.text.split(': ', 1)[-1])}" for v in versions[:2])
     else:
         result.verdict = "se_ne_parla"
         result.explanation = f"La storia è questa: «{story.title}». Ma nessun fatto accertato corrisponde esattamente a quello che hai scritto."
@@ -245,7 +245,7 @@ def check_claim(claim: str, stories: List[Story]) -> CheckResult:
     elif div is not None and result.verdict in ("se_ne_parla", "riportato"):
         result.verdict = "contestato"
         result.explanation = f"Su questo punto ({div.topic.lower()}) le testate non concordano. " + " ".join(
-            f"Per {', '.join(names_of(v.source_ids))}: {v.account}" for v in div.versions[:3]
+            f"Per {', '.join(names_of(v.source_ids))}: {v.account[0].lower() + v.account[1:]}" for v in div.versions[:3]
         )
         return _finish(result, claim, story, skip_numbers=True)
 
@@ -287,6 +287,10 @@ def _finish(result: CheckResult, claim: str, story: Story, skip_numbers: bool = 
         result = _llm_refine(result, claim)
     result.headline = HEADLINES.get(result.verdict, result.headline)
     return result
+
+
+def _lc(t: str) -> str:
+    return t[:1].lower() + t[1:] if t else t
 
 
 def _fmt(n) -> str:
@@ -339,7 +343,7 @@ Usa SOLO questi elementi. JSON: {{"relazione": "sostiene|contraddice|parziale|no
         result.verdict = "riportato"
     if expl:
         result.explanation = expl + (" " + result.explanation if result.numbers_mismatch else "")
-    result.method = "similarita+modello"
+    result.method = "confronto testuale + modello"
     return result
 
 

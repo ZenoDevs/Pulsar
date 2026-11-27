@@ -5,6 +5,8 @@ import { Fingerprint } from "../components/Instruments";
 import { api } from "../lib/api";
 import { plural, today } from "../lib/format";
 import { feedPayload, loadProfile, markBriefingDone, markSeen, recordFeedback } from "../lib/profile";
+import { ShareButton } from "../components/StoryTools";
+import { canSpeak, scriptFor, speak, stopSpeaking } from "../lib/voice";
 
 const MAX = 6;
 
@@ -71,6 +73,7 @@ function Slide({ s, index, total, onFeedback, feedback }) {
             <button type="button" aria-pressed={feedback === "less"} onClick={() => onFeedback(s.id, "less")}>
               Meno
             </button>
+            <ShareButton summary={s} light />
           </div>
         </div>
       </div>
@@ -87,6 +90,29 @@ export default function Briefing() {
   const [active, setActive] = useState(0);
   const [feedback, setFeedback] = useState({});
   const scroller = useRef(null);
+  const [listening, setListening] = useState(false);
+  const listeningRef = useRef(false);
+
+  const stopListening = () => {
+    listeningRef.current = false;
+    setListening(false);
+    stopSpeaking();
+  };
+
+  const listen = async (stories) => {
+    if (listeningRef.current) return stopListening();
+    listeningRef.current = true;
+    setListening(true);
+    const root = scroller.current;
+    for (let i = active; i < stories.length && listeningRef.current; i++) {
+      root?.scrollTo({ top: i * root.clientHeight, behavior: "smooth" });
+      await speak(scriptFor(stories[i]));
+    }
+    if (listeningRef.current) root?.scrollTo({ top: stories.length * root.clientHeight, behavior: "smooth" });
+    stopListening();
+  };
+
+  useEffect(() => () => stopSpeaking(), []);
 
   useEffect(() => {
     api
@@ -172,9 +198,23 @@ export default function Briefing() {
         </ol>
         <div className="brief2-bar">
           <span>Il tuo briefing, {today()}</span>
-          <Link to="/" onClick={markBriefingDone} aria-label="Chiudi il briefing">
-            Chiudi
-          </Link>
+          <div className="brief2-bar-actions">
+            {canSpeak() && (
+              <button type="button" onClick={() => listen(stories)} aria-pressed={listening}>
+                {listening ? "Ferma la lettura" : "Ascolta"}
+              </button>
+            )}
+            <Link
+              to="/"
+              onClick={() => {
+                stopListening();
+                markBriefingDone();
+              }}
+              aria-label="Chiudi il briefing"
+            >
+              Chiudi
+            </Link>
+          </div>
         </div>
       </header>
 
@@ -186,6 +226,9 @@ export default function Briefing() {
           <div className="bs-end">
             <p className="bs-reason">Fine del briefing</p>
             <h2 className="bs-title">Sei aggiornato.</h2>
+            {(loadProfile().streak?.count || 0) > 1 && (
+              <p className="bs-streak">{loadProfile().streak.count} giorni di fila.</p>
+            )}
             <dl className="bs-tally">
               <div>
                 <dt>{totals.confermato}</dt>

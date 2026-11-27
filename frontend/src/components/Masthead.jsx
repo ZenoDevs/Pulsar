@@ -27,6 +27,8 @@ export default function Masthead() {
           Edizione
         </NavLink>
         <NavLink to="/briefing">Briefing</NavLink>
+        <NavLink to="/verifica">Verifica</NavLink>
+        <NavLink to="/specchio">Specchio</NavLink>
         <NavLink to="/argomenti">Argomenti</NavLink>
         <NavLink to="/fonti">Metodo</NavLink>
       </nav>

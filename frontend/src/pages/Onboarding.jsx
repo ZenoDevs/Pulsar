@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import TopicPicker from "../components/TopicPicker";
 import { loadProfile, saveProfile } from "../lib/profile";
 import { STATUS } from "../lib/format";
@@ -37,6 +37,9 @@ export default function Onboarding() {
           <button className="onb-cta" onClick={() => setStep(1)}>
             Scegli cosa seguire
           </button>
+          <Link to="/manifesto" className="onb-manifesto">
+            Perché esistiamo
+          </Link>
         </section>
       )}
 

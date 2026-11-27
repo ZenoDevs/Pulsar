@@ -97,3 +97,15 @@ export const SECTION_TONE = {
   Sport: ["#2f3d14", "#131a07"],
 };
 export const toneOf = (section) => SECTION_TONE[section] || ["#232b3d", "#0e1320"];
+
+/** Verdetti della verifica: stesso vocabolario degli stati, più tre casi. */
+export const VERDICT = {
+  confermato: { tone: "confermato", short: "Confermato" },
+  riportato: { tone: "riportato", short: "Solo riportato" },
+  contestato: { tone: "contestato", short: "Contestato" },
+  non_verificato: { tone: "non_verificato", short: "Non verificato" },
+  opinione: { tone: "interpretazione", short: "Opinione" },
+  contraddetto: { tone: "contestato", short: "Le fonti dicono altro" },
+  se_ne_parla: { tone: "neutro", short: "Se ne parla" },
+  non_trovata: { tone: "neutro", short: "Non trovata" },
+};

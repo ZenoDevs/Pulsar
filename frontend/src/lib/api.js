@@ -15,8 +15,21 @@ async function post(path, body) {
     headers: { "Content-Type": "application/json" },
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (!r.ok) throw new Error(`Errore ${r.status}`);
+  if (!r.ok) {
+    const detail = await r.json().catch(() => ({}));
+    throw new Error(detail.detail || `Errore ${r.status}`);
+  }
   return r.json();
+}
+
+export async function postBlob(path, body) {
+  const r = await fetch(`${BASE}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error(`Errore ${r.status}`);
+  return r.blob();
 }
 
 export const api = {
@@ -29,6 +42,9 @@ export const api = {
   topics: () => get("/api/topics"),
   feed: (payload) => post("/api/feed", payload),
   status: () => get("/api/status"),
+  check: (claim, demo) => post("/api/check", { claim, demo }),
+  ask: (id, question) => post(`/api/story/${id}/ask`, { question }),
+  updates: (follow, demo) => post("/api/stories/updates", { follow, demo }),
   searchStatus: (id) => get(`/api/search/status/${id}`),
 };
 

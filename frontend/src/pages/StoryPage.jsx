@@ -11,7 +11,15 @@ import {
   StatusTag,
 } from "../components/Instruments";
 import { api } from "../lib/api";
-import { recordOpen } from "../lib/profile";
+import { loadProfile, recordOpen, setDepth } from "../lib/profile";
+import {
+  AskBox,
+  DepthSwitch,
+  FollowButton,
+  OneMinute,
+  ShareButton,
+  TenSeconds,
+} from "../components/StoryTools";
 import {
   INTERP_KIND,
   STATUS_ORDER,
@@ -54,7 +62,9 @@ function FactRow({ f, names, articlesById }) {
                   <q>{ev.quote}</q>
                   <span>
                     {names[ev.source_id]}:{" "}
-                    {ev.verified ? "citazione ritrovata nel testo" : "citazione NON ritrovata, fonte esclusa"}
+                    {ev.verified
+                      ? "citazione ritrovata nel testo"
+                      : "citazione NON ritrovata, fonte esclusa"}
                   </span>
                 </li>
               ))}
@@ -111,6 +121,11 @@ function Position({ ids, orientation }) {
 export default function StoryPage() {
   const { id } = useParams();
   const [loaded, setLoaded] = useState({ id: null, story: null, error: null });
+  const [depth, setDepthState] = useState(() => loadProfile().depth || "tutto");
+  const changeDepth = (d) => {
+    setDepthState(d);
+    setDepth(d);
+  };
 
   useEffect(() => {
     api
@@ -210,324 +225,370 @@ export default function StoryPage() {
             La tua edizione
           </Link>
           <p className="meta">
-            {story.section && <span className="meta-section">{story.section}</span>}
+            {story.section && (
+              <span className="meta-section">{story.section}</span>
+            )}
             <span>
-              {plural(story.stats.total_articles, "articolo", "articoli")} da {plural(outlets.length, "testata", "testate")}
+              {plural(story.stats.total_articles, "articolo", "articoli")} da{" "}
+              {plural(outlets.length, "testata", "testate")}
             </span>
-            {m?.first_reported_by && <span>prima notizia: {m.first_reported_by}</span>}
+            {m?.first_reported_by && (
+              <span>prima notizia: {m.first_reported_by}</span>
+            )}
           </p>
           <h1 className="story-title">{story.title}</h1>
           {d?.summary && <p className="story-summary">{d.summary}</p>}
           {m?.blindspot && <p className="story-blind">{m.blindspot.message}</p>}
         </div>
       </header>
-      {headlines.length > 1 && (
+      <div className="story-bar">
+        <DepthSwitch value={depth} onChange={changeDepth} />
+        <div className="story-bar-actions">
+          <FollowButton storyId={story.id} />
+          <ShareButton summary={{ ...story, headlines }} />
+        </div>
+      </div>
+
+      {depth === "10s" && (
+        <div className="story-quick">
+          <TenSeconds story={story} />
+          <AskBox story={story} />
+        </div>
+      )}
+      {depth === "1min" && (
+        <div className="story-quick">
+          <OneMinute story={story} names={names} />
+          <AskBox story={story} />
+        </div>
+      )}
+
+      {depth === "tutto" && headlines.length > 1 && (
         <div className="story-dial">
           <HeadlineDial headlines={headlines} />
         </div>
       )}
-      {d && <Scrolly story={story} names={names} orientation={orientation} />}
+      {depth === "tutto" && d && (
+        <Scrolly story={story} names={names} orientation={orientation} />
+      )}
+      {depth === "tutto" && (
+        <div className="story-ask">
+          <AskBox story={story} />
+        </div>
+      )}
 
-      <div className="story-wrap">
-        <div className="story-grid">
-          <div className="story-main">
-            {!d && (
-              <p className="nodossier">
-                Per questa storia non c'è ancora un dossier: serve un modello
-                linguistico configurato nel backend e almeno due testate che ne
-                parlino. Sotto trovi comunque spettro, cronologia e articoli.
-              </p>
-            )}
+      {depth === "tutto" && (
+        <div className="story-wrap">
+          <div className="story-grid">
+            <div className="story-main">
+              {!d && (
+                <p className="nodossier">
+                  Per questa storia non c'è ancora un dossier: serve un modello
+                  linguistico configurato nel backend e almeno due testate che
+                  ne parlino. Sotto trovi comunque spettro, cronologia e
+                  articoli.
+                </p>
+              )}
 
-            {facts.length > 0 && (
-              <Section
-                id="sappiamo"
-                title="Cosa sappiamo"
-                intro="Ogni affermazione verificabile, con lo stato e chi la riporta. Apri una riga per vedere gli articoli citati."
-              >
-                <ul className="facts">
-                  {facts.map((f) => (
-                    <FactRow
-                      key={f.id}
-                      f={f}
-                      names={names}
-                      articlesById={articlesById}
-                    />
-                  ))}
-                </ul>
-              </Section>
-            )}
+              {facts.length > 0 && (
+                <Section
+                  id="sappiamo"
+                  title="Cosa sappiamo"
+                  intro="Ogni affermazione verificabile, con lo stato e chi la riporta. Apri una riga per vedere gli articoli citati."
+                >
+                  <ul className="facts">
+                    {facts.map((f) => (
+                      <FactRow
+                        key={f.id}
+                        f={f}
+                        names={names}
+                        articlesById={articlesById}
+                      />
+                    ))}
+                  </ul>
+                </Section>
+              )}
 
-            {d?.divergences.length > 0 && (
-              <Section id="divergenze" title="Dove non concordano">
-                {d.divergences.map((dv, i) => (
-                  <div key={i} className="div">
-                    <h3>{dv.topic}</h3>
-                    <div className="div-versions">
-                      {dv.versions.map((v, j) => (
-                        <div key={j} className="div-v">
-                          <p>{v.account}</p>
-                          <SourceChips ids={v.source_ids} names={names} />
-                        </div>
-                      ))}
+              {d?.divergences.length > 0 && (
+                <Section id="divergenze" title="Dove non concordano">
+                  {d.divergences.map((dv, i) => (
+                    <div key={i} className="div">
+                      <h3>{dv.topic}</h3>
+                      <div className="div-versions">
+                        {dv.versions.map((v, j) => (
+                          <div key={j} className="div-v">
+                            <p>{v.account}</p>
+                            <SourceChips ids={v.source_ids} names={names} />
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </Section>
-            )}
+                  ))}
+                </Section>
+              )}
 
-            {d?.framings.length > 0 && (
-              <Section
-                id="racconto"
-                title="Come la raccontano"
-                intro="Gli stessi fatti dentro cornici diverse. Le cornici sono ordinate dalla testata più a sinistra a quella più a destra."
-              >
-                <div className="frames">
-                  {d.framings.map((fr, i) => (
-                    <div key={i} className="frame">
-                      <Position ids={fr.source_ids} orientation={orientation} />
-                      <h3>{fr.label}</h3>
-                      <p>{fr.frame}</p>
-                      {fr.keywords.length > 0 && (
-                        <p className="frame-kw">
-                          {fr.keywords.map((k) => (
-                            <q key={k}>{k}</q>
-                          ))}
+              {d?.framings.length > 0 && (
+                <Section
+                  id="racconto"
+                  title="Come la raccontano"
+                  intro="Gli stessi fatti dentro cornici diverse. Le cornici sono ordinate dalla testata più a sinistra a quella più a destra."
+                >
+                  <div className="frames">
+                    {d.framings.map((fr, i) => (
+                      <div key={i} className="frame">
+                        <Position
+                          ids={fr.source_ids}
+                          orientation={orientation}
+                        />
+                        <h3>{fr.label}</h3>
+                        <p>{fr.frame}</p>
+                        {fr.keywords.length > 0 && (
+                          <p className="frame-kw">
+                            {fr.keywords.map((k) => (
+                              <q key={k}>{k}</q>
+                            ))}
+                          </p>
+                        )}
+                        <SourceChips ids={fr.source_ids} names={names} muted />
+                      </div>
+                    ))}
+                  </div>
+                </Section>
+              )}
+
+              {d?.interpretations.length > 0 && (
+                <Section
+                  id="interpretazioni"
+                  title="Opinioni e interpretazioni"
+                  intro="Non sono fatti. Sono qui perché sapere chi le sostiene aiuta a pesarle."
+                >
+                  <ul className="interps">
+                    {d.interpretations.map((it, i) => (
+                      <li key={i}>
+                        <span className="interp-kind">
+                          {INTERP_KIND[it.kind] || "Opinione"}
+                        </span>
+                        <p>{it.text}</p>
+                        <SourceChips ids={it.source_ids} names={names} muted />
+                      </li>
+                    ))}
+                  </ul>
+                </Section>
+              )}
+
+              {d?.omissions.length > 0 && (
+                <Section id="omissioni" title="Cosa manca, e a chi">
+                  <ul className="omits">
+                    {d.omissions.map((o, i) => (
+                      <li key={i}>
+                        <p>{o.element}</p>
+                        <dl>
+                          <dt>Lo riportano</dt>
+                          <dd>
+                            <SourceChips ids={o.present_in} names={names} />
+                          </dd>
+                          <dt>Non ne parlano</dt>
+                          <dd>
+                            <SourceChips
+                              ids={o.absent_in}
+                              names={names}
+                              muted
+                            />
+                          </dd>
+                        </dl>
+                      </li>
+                    ))}
+                  </ul>
+                </Section>
+              )}
+
+              {d?.loaded_language.length > 0 && (
+                <Section
+                  id="parole"
+                  title="Parole cariche"
+                  intro="Termini che portano un giudizio dentro la notizia, con un'alternativa neutra."
+                >
+                  <table className="words">
+                    <thead>
+                      <tr>
+                        <th scope="col">Scritto</th>
+                        <th scope="col">Detto in modo neutro</th>
+                        <th scope="col">Perché</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {d.loaded_language.map((t, i) => (
+                        <tr key={i}>
+                          <td>
+                            <q className="word-loaded">{t.term}</q>
+                            {t.source_id && (
+                              <span className="word-src">
+                                {names[t.source_id]}
+                              </span>
+                            )}
+                          </td>
+                          <td>{t.neutral}</td>
+                          <td className="word-why">{t.why}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </Section>
+              )}
+
+              {d?.open_questions.length > 0 && (
+                <Section id="domande" title="Cosa non sappiamo ancora">
+                  <ul className="questions">
+                    {d.open_questions.map((q, i) => (
+                      <li key={i}>{q}</li>
+                    ))}
+                  </ul>
+                </Section>
+              )}
+
+              {story.updates?.length > 0 && (
+                <Section
+                  id="evoluzione"
+                  title="Come è cambiata"
+                  intro="Le notizie maturano: nuove testate, smentite, conferme. Ogni cambio di stato resta scritto qui."
+                >
+                  <ol className="evo">
+                    {[...story.updates].reverse().map((u, i) => (
+                      <li key={i} className={`evo-${u.kind}`}>
+                        <time>{clock(u.at)}</time>
+                        <p>
+                          {u.kind === "cambio_stato" && u.to_status && (
+                            <span className="evo-change">
+                              <StatusTag status={u.from_status} />{" "}
+                              <span aria-hidden>›</span>{" "}
+                              <StatusTag status={u.to_status} />
+                            </span>
+                          )}
+                          {u.text}
                         </p>
-                      )}
-                      <SourceChips ids={fr.source_ids} names={names} muted />
+                      </li>
+                    ))}
+                  </ol>
+                </Section>
+              )}
+
+              {m?.timeline.length > 0 && (
+                <Section
+                  id="cronologia"
+                  title="Chi l'ha detto e quando"
+                  intro="Le riprese sono testi quasi identici a uno uscito prima: non contano come conferme."
+                >
+                  <ol className="tl">
+                    {m.timeline.map((t) => (
+                      <li
+                        key={t.article_id}
+                        className={t.is_echo ? "tl-echo" : ""}
+                      >
+                        <time>{clock(t.published_at)}</time>
+                        <span className="tl-src">{t.source_name}</span>
+                        <span className="tl-title">
+                          {t.title}
+                          {t.is_echo && <span className="echo">ripresa</span>}
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                </Section>
+              )}
+
+              <Section id="articoli" title="Tutti gli articoli">
+                <div className="arts">
+                  {outlets.map((sid) => (
+                    <div key={sid} className="arts-src">
+                      <h3>{names[sid]}</h3>
+                      <ul>
+                        {bySource[sid].map((a) => (
+                          <li key={a.id}>
+                            {a.url ? (
+                              <a href={a.url} target="_blank" rel="noreferrer">
+                                {a.title}
+                              </a>
+                            ) : (
+                              <span className="art-title">{a.title}</span>
+                            )}
+                            <p className="art-snip">{a.snippet}</p>
+                            {a.bias_explanation && (
+                              <p className="art-bias">
+                                Lettura del testo: {a.bias_explanation} (
+                                {pct(a.bias_confidence)} di affidabilità)
+                              </p>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
                     </div>
                   ))}
                 </div>
               </Section>
-            )}
+            </div>
 
-            {d?.interpretations.length > 0 && (
-              <Section
-                id="interpretazioni"
-                title="Opinioni e interpretazioni"
-                intro="Non sono fatti. Sono qui perché sapere chi le sostiene aiuta a pesarle."
-              >
-                <ul className="interps">
-                  {d.interpretations.map((it, i) => (
-                    <li key={i}>
-                      <span className="interp-kind">
-                        {INTERP_KIND[it.kind] || "Opinione"}
-                      </span>
-                      <p>{it.text}</p>
-                      <SourceChips ids={it.source_ids} names={names} muted />
-                    </li>
-                  ))}
-                </ul>
-              </Section>
-            )}
-
-            {d?.omissions.length > 0 && (
-              <Section id="omissioni" title="Cosa manca, e a chi">
-                <ul className="omits">
-                  {d.omissions.map((o, i) => (
-                    <li key={i}>
-                      <p>{o.element}</p>
-                      <dl>
-                        <dt>Lo riportano</dt>
-                        <dd>
-                          <SourceChips ids={o.present_in} names={names} />
-                        </dd>
-                        <dt>Non ne parlano</dt>
-                        <dd>
-                          <SourceChips ids={o.absent_in} names={names} muted />
-                        </dd>
-                      </dl>
-                    </li>
-                  ))}
-                </ul>
-              </Section>
-            )}
-
-            {d?.loaded_language.length > 0 && (
-              <Section
-                id="parole"
-                title="Parole cariche"
-                intro="Termini che portano un giudizio dentro la notizia, con un'alternativa neutra."
-              >
-                <table className="words">
-                  <thead>
-                    <tr>
-                      <th scope="col">Scritto</th>
-                      <th scope="col">Detto in modo neutro</th>
-                      <th scope="col">Perché</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {d.loaded_language.map((t, i) => (
-                      <tr key={i}>
-                        <td>
-                          <q className="word-loaded">{t.term}</q>
-                          {t.source_id && (
-                            <span className="word-src">
-                              {names[t.source_id]}
-                            </span>
-                          )}
-                        </td>
-                        <td>{t.neutral}</td>
-                        <td className="word-why">{t.why}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </Section>
-            )}
-
-            {d?.open_questions.length > 0 && (
-              <Section id="domande" title="Cosa non sappiamo ancora">
-                <ul className="questions">
-                  {d.open_questions.map((q, i) => (
-                    <li key={i}>{q}</li>
-                  ))}
-                </ul>
-              </Section>
-            )}
-
-            {story.updates?.length > 0 && (
-              <Section
-                id="evoluzione"
-                title="Come è cambiata"
-                intro="Le notizie maturano: nuove testate, smentite, conferme. Ogni cambio di stato resta scritto qui."
-              >
-                <ol className="evo">
-                  {[...story.updates].reverse().map((u, i) => (
-                    <li key={i} className={`evo-${u.kind}`}>
-                      <time>{clock(u.at)}</time>
-                      <p>
-                        {u.kind === "cambio_stato" && u.to_status && (
-                          <span className="evo-change">
-                            <StatusTag status={u.from_status} /> <span aria-hidden>›</span> <StatusTag status={u.to_status} />
-                          </span>
-                        )}
-                        {u.text}
-                      </p>
-                    </li>
-                  ))}
-                </ol>
-              </Section>
-            )}
-
-            {m?.timeline.length > 0 && (
-              <Section
-                id="cronologia"
-                title="Chi l'ha detto e quando"
-                intro="Le riprese sono testi quasi identici a uno uscito prima: non contano come conferme."
-              >
-                <ol className="tl">
-                  {m.timeline.map((t) => (
-                    <li
-                      key={t.article_id}
-                      className={t.is_echo ? "tl-echo" : ""}
-                    >
-                      <time>{clock(t.published_at)}</time>
-                      <span className="tl-src">{t.source_name}</span>
-                      <span className="tl-title">
-                        {t.title}
-                        {t.is_echo && <span className="echo">ripresa</span>}
-                      </span>
-                    </li>
-                  ))}
-                </ol>
-              </Section>
-            )}
-
-            <Section id="articoli" title="Tutti gli articoli">
-              <div className="arts">
-                {outlets.map((sid) => (
-                  <div key={sid} className="arts-src">
-                    <h3>{names[sid]}</h3>
-                    <ul>
-                      {bySource[sid].map((a) => (
-                        <li key={a.id}>
-                          {a.url ? (
-                            <a href={a.url} target="_blank" rel="noreferrer">
-                              {a.title}
-                            </a>
-                          ) : (
-                            <span className="art-title">{a.title}</span>
-                          )}
-                          <p className="art-snip">{a.snippet}</p>
-                          {a.bias_explanation && (
-                            <p className="art-bias">
-                              Lettura del testo: {a.bias_explanation} (
-                              {pct(a.bias_confidence)} di affidabilità)
-                            </p>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
+            <aside className="story-rail">
+              <div className="rail-block">
+                <h2 className="side-h">Quanto è solida</h2>
+                <Fingerprint
+                  facts={facts}
+                  counts={m?.status_counts}
+                  size="lg"
+                  showLegend
+                  animate
+                />
+                {m?.solidity != null && (
+                  <p className="rail-note">
+                    {pct(m.solidity)} dei fatti è confermato da almeno due voci
+                    indipendenti.
+                  </p>
+                )}
               </div>
-            </Section>
-          </div>
-
-          <aside className="story-rail">
-            <div className="rail-block">
-              <h2 className="side-h">Quanto è solida</h2>
-              <Fingerprint
-                facts={facts}
-                counts={m?.status_counts}
-                size="lg"
-                showLegend
-                animate
-              />
-              {m?.solidity != null && (
+              <div className="rail-block">
+                <h2 className="side-h">Chi la racconta</h2>
+                <Spectrum
+                  points={m?.spectrum}
+                  mean={m?.mean_orientation}
+                  size="lg"
+                />
+                <IndependenceLine ind={m?.independence} />
+              </div>
+              {toc.length > 2 && (
+                <nav
+                  className="rail-block rail-toc"
+                  aria-label="In questa pagina"
+                >
+                  <h2 className="side-h">In questa pagina</h2>
+                  <ul>
+                    {toc.map(([id, label, n]) => (
+                      <li key={id}>
+                        <a href={`#${id}`}>{label}</a>
+                        <span>{n}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </nav>
+              )}
+              {d?.grounding && (
                 <p className="rail-note">
-                  {pct(m.solidity)} dei fatti è confermato da almeno due voci
-                  indipendenti.
+                  {d.grounding.verified} citazioni su {d.grounding.total}{" "}
+                  ritrovate parola per parola negli articoli.
                 </p>
               )}
-            </div>
-            <div className="rail-block">
-              <h2 className="side-h">Chi la racconta</h2>
-              <Spectrum
-                points={m?.spectrum}
-                mean={m?.mean_orientation}
-                size="lg"
-              />
-              <IndependenceLine ind={m?.independence} />
-            </div>
-            {toc.length > 2 && (
-              <nav
-                className="rail-block rail-toc"
-                aria-label="In questa pagina"
-              >
-                <h2 className="side-h">In questa pagina</h2>
-                <ul>
-                  {toc.map(([id, label, n]) => (
-                    <li key={id}>
-                      <a href={`#${id}`}>{label}</a>
-                      <span>{n}</span>
-                    </li>
-                  ))}
-                </ul>
-              </nav>
-            )}
-            {d?.grounding && (
-              <p className="rail-note">
-                {d.grounding.verified} citazioni su {d.grounding.total} ritrovate parola per parola negli articoli.
-              </p>
-            )}
-            {d && (
-              <p className="rail-gen">
-                Dossier generato{" "}
-                {d.generated_by === "demo"
-                  ? "a mano per la demo"
-                  : `da un modello (${d.generated_by})`}{" "}
-                a partire dai soli articoli elencati. Gli stati sono poi
-                controllati da regole fisse: possono essere abbassati, mai
-                alzati. <Link to="/fonti#metodo">Come funziona</Link>
-              </p>
-            )}
-          </aside>
+              {d && (
+                <p className="rail-gen">
+                  Dossier generato{" "}
+                  {d.generated_by === "demo"
+                    ? "a mano per la demo"
+                    : `da un modello (${d.generated_by})`}{" "}
+                  a partire dai soli articoli elencati. Gli stati sono poi
+                  controllati da regole fisse: possono essere abbassati, mai
+                  alzati. <Link to="/fonti#metodo">Come funziona</Link>
+                </p>
+              )}
+            </aside>
+          </div>
         </div>
-      </div>
+      )}
     </main>
   );
 }

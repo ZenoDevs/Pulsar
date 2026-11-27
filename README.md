@@ -21,6 +21,18 @@ Il principio di design: **il colore indica solo la certezza, mai la politica.** 
 - **La storia**: una scena che si trasforma mentre scorri (chi ne parla, cosa è accertato, dove si dividono, come la raccontano), poi il dossier completo con le citazioni verificate e la cronologia dei cambi di stato.
 - **Pulsar impara**: le sezioni che apri e i "di più / meno" affinano l'ordine. Il profilo resta nel browser; il server lo riceve a ogni apertura e non lo salva.
 
+## Le funzioni che cambiano il modo di informarsi
+
+- **Verifica una notizia** (`/verifica`): incolli una frase vista su WhatsApp o sui social; Pulsar la confronta con fatti, opinioni e versioni di tutte le storie del giorno e risponde con un verdetto (confermato, solo riportato, contestato, non verificato, opinione, le fonti dicono altro, non trovata). Se i numeri non coincidono con quelli delle testate, lo dice. Il verdetto si condivide come immagine e come link.
+- **Chiedi a questa storia**: domande in linguaggio naturale, risposte solo dagli articoli con le frasi originali. Se la risposta non c'è, Pulsar lo dice invece di inventarla.
+- **Segui una storia**: le notizie sono oggetti vivi. "Le storie che segui" mostra cosa è cambiato da quando le hai lette: nuove testate, fatti passati da riportato a confermato, smentite.
+- **Tre profondità**: ogni storia in 10 secondi, in 1 minuto o tutta intera.
+- **Il tuo specchio** (`/specchio`): da che parte dello spettro arrivano le storie che leggi davvero, e "Allarga lo sguardo" con le storie che vede l'altra metà. Calcolato solo sul dispositivo.
+- **Scheda da condividere**: un'immagine verticale con i due titoli più distanti sullo stesso fatto e la versione senza inquadramento.
+- **Ascolta il briefing**: lettura ad alta voce che scorre da sola tra le storie; voce di ElevenLabs se `ELEVENLABS_API_KEY` è impostata (`ELEVENLABS_VOICE_ID`, `ELEVENLABS_MODEL_ID` opzionali), altrimenti la voce del browser.
+
+Tutte funzionano anche senza chiavi API: la base è il confronto testuale; il modello, se c'è, raffina e genera, sempre con citazioni verificate.
+
 ## L'aggregatore
 
 `python -m app.aggregator.worker --every 20` (oppure `PULSAR_SCHEDULE_MINUTES=20` per farlo girare dentro l'API). Ogni giro:
