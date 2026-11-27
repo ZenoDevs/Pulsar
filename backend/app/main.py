@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime
 from typing import Dict, Optional
 
-from fastapi import BackgroundTasks, FastAPI, HTTPException
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -18,6 +18,7 @@ from .db_orm import SessionLocal, latest_edition, load_story, search_articles_in
 from .pipeline import STORY_CACHE, build_stories, finalize_story, summarize
 from .schemas import Article, Edition, SearchRequest, Story, StorySummary
 from .topics import CATALOG, expand_custom, personalize
+from .ratelimit import limit
 from .sources import ORIENTATION_DISCLAIMER, SOURCE_NAMES, get_source, real_sources
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
@@ -286,6 +287,117 @@ def feed(req: FeedRequest) -> dict:
         "rails": result["rails"],
         "blindspots": edition.blindspots,
     }
+
+
+# --------------------------------------------------------------------------
+# Verifica, domande, storie seguite, audio
+# --------------------------------------------------------------------------
+
+
+class CheckRequest(BaseModel):
+    claim: str
+    demo: bool = False
+
+
+@app.post("/api/check")
+def check(req: CheckRequest, request: Request):
+    """Verifica un'affermazione contro le storie correnti."""
+    from .analysis.qa import check_claim
+    from .store import current_stories
+
+    limit(request, "check", per_minute=20)
+    claim = req.claim.strip()
+    if len(claim) < 8:
+        raise HTTPException(400, "Scrivi una frase un po' più lunga: almeno qualche parola.")
+    demo = req.demo or DEMO_MODE == "1" or (DEMO_MODE == "auto" and not _has_real_edition())
+    return check_claim(claim, current_stories(demo))
+
+
+class AskRequest(BaseModel):
+    question: str
+
+
+@app.post("/api/story/{story_id}/ask")
+def ask(story_id: str, req: AskRequest, request: Request):
+    from .analysis.qa import ask_story
+
+    limit(request, "ask", per_minute=20)
+    if len(req.question.strip()) < 4:
+        raise HTTPException(400, "Scrivi una domanda.")
+    story = get_story(story_id)
+    return ask_story(story, req.question)
+
+
+class UpdatesRequest(BaseModel):
+    follow: dict[str, Optional[str]] = {}
+    demo: bool = False
+
+
+@app.post("/api/stories/updates")
+def story_updates(req: UpdatesRequest) -> dict:
+    """Le storie che segui: cosa e' cambiato dall'ultima volta che le hai aperte."""
+    out = []
+    for sid, since in list(req.follow.items())[:50]:
+        try:
+            story = get_story(sid)
+        except HTTPException:
+            out.append({"id": sid, "gone": True})
+            continue
+        since_dt = None
+        if since:
+            try:
+                since_dt = datetime.fromisoformat(since.replace("Z", "+00:00")).replace(tzinfo=None)
+            except ValueError:
+                since_dt = None
+        new = [u for u in story.updates if since_dt is None or (u.at.replace(tzinfo=None) if u.at.tzinfo else u.at) > since_dt]
+        latest = max((u.at for u in story.updates), default=None)
+        out.append(
+            {
+                "id": story.id,
+                "title": story.title,
+                "section": story.section,
+                "status_counts": story.metrics.status_counts if story.metrics else {},
+                "new_updates": [u.model_dump() for u in new][-5:],
+                "latest_update_at": latest,
+            }
+        )
+    out.sort(key=lambda x: -len(x.get("new_updates") or []))
+    return {"stories": out}
+
+
+class TTSRequest(BaseModel):
+    text: str
+
+
+@app.post("/api/tts")
+def tts(req: TTSRequest, request: Request):
+    """Voce del briefing con ElevenLabs, se configurato. Senza chiave risponde 404
+    e il frontend usa la sintesi vocale del browser."""
+    import requests as _rq
+    from fastapi import Response
+
+    key = os.getenv("ELEVENLABS_API_KEY")
+    if not key:
+        raise HTTPException(404, "Voce di ElevenLabs non configurata")
+    limit(request, "tts", per_minute=6)
+    text = req.text.strip()[:4500]
+    voice = os.getenv("ELEVENLABS_VOICE_ID", "JBFqnCBsd6RMkjVDRZzb")
+    model = os.getenv("ELEVENLABS_MODEL_ID", "eleven_multilingual_v2")
+    r = _rq.post(
+        f"https://api.elevenlabs.io/v1/text-to-speech/{voice}",
+        params={"output_format": "mp3_44100_128"},
+        headers={"xi-api-key": key, "Content-Type": "application/json"},
+        json={"text": text, "model_id": model, "language_code": "it"},
+        timeout=60,
+    )
+    if r.status_code != 200:
+        raise HTTPException(502, f"ElevenLabs ha risposto {r.status_code}")
+    return Response(content=r.content, media_type="audio/mpeg")
+
+
+def _has_real_edition() -> bool:
+    with SessionLocal() as db:
+        return latest_edition(db, include_demo=False) is not None
 
 
 # --------------------------------------------------------------------------
