@@ -457,3 +457,25 @@ def sources(demo: bool = False) -> dict:
         "updated": "2026-11",
         "sources": [{**s.to_dict(), "health": health.get(s.id)} for s in sorted(items, key=lambda s: s.orientation)],
     }
+
+
+# --------------------------------------------------------------------------
+# Frontend statico (produzione): stesso server, stessa origine
+# --------------------------------------------------------------------------
+
+_STATIC = os.getenv("PULSAR_STATIC_DIR", os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "dist"))
+if os.path.isdir(_STATIC):
+    from fastapi.responses import FileResponse
+    from fastapi.staticfiles import StaticFiles
+
+    app.mount("/assets", StaticFiles(directory=os.path.join(_STATIC, "assets")), name="assets")
+
+    @app.get("/{path:path}", include_in_schema=False)
+    def spa(path: str):
+        """File pubblici se esistono, altrimenti l'app (che gestisce le sue rotte e il 404)."""
+        if path.startswith("api/"):
+            raise HTTPException(404, "Endpoint inesistente")
+        candidate = os.path.normpath(os.path.join(_STATIC, path))
+        if path and candidate.startswith(os.path.normpath(_STATIC)) and os.path.isfile(candidate):
+            return FileResponse(candidate)
+        return FileResponse(os.path.join(_STATIC, "index.html"), headers={"Cache-Control": "no-cache"})

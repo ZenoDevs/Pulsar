@@ -55,7 +55,16 @@ Ogni giro è registrato con tempi per fase, conteggi ed errori: `GET /api/status
 5. **Ogni dossier è riproducibile**: versione del prompt, modello e hash degli articoli in ingresso sono salvati con il dossier.
 6. **Limiti dichiarati.** L'orientamento delle testate è una stima editoriale di partenza, contestabile, e l'asse sinistra-destra semplifica. Gli assetti proprietari sono aggiornati a novembre 2026: quelli verificati hanno un link alla fonte, gli altri sono marcati "da verificare" (`backend/app/sources.py`).
 
-## Avvio rapido
+## In produzione, in un comando
+
+```bash
+cp .env.example .env      # aggiungi le chiavi e una password per il database
+docker compose up -d --build
+```
+
+Parte tutto: Postgres, l'API con il frontend compilato sulla stessa origine (porta 8000) e l'aggregatore in un processo separato, ogni 20 minuti. Prima del lancio: `docker compose run --rm worker python -m app.cli check-feeds` per correggere i feed che non rispondono.
+
+## Avvio rapido (sviluppo)
 
 ```bash
 # Backend

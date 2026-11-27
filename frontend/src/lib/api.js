@@ -1,4 +1,5 @@
-const BASE = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
+// In sviluppo il backend gira a parte; in produzione e' sulla stessa origine.
+const BASE = import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? "http://127.0.0.1:8000" : "");
 
 async function get(path) {
   const r = await fetch(`${BASE}${path}`);

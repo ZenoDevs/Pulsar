@@ -1,0 +1,44 @@
+# Pulsar in produzione: database, API (con frontend) e aggregatore separato.
+#   cp .env.example .env   # aggiungi le chiavi
+#   docker compose up -d --build
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: pulsar
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pulsar}
+      POSTGRES_DB: pulsar
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pulsar"]
+      interval: 5s
+      retries: 10
+    restart: unless-stopped
+
+  api:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://pulsar:${POSTGRES_PASSWORD:-pulsar}@db:5432/pulsar
+      PULSAR_CORS_ORIGINS: ${PULSAR_PUBLIC_URL:-http://localhost:8000}
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://pulsar:${POSTGRES_PASSWORD:-pulsar}@db:5432/pulsar
+    command: ["python", "-m", "app.aggregator.worker", "--every", "20"]
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:

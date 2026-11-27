@@ -277,11 +277,13 @@ def _finish(result: CheckResult, claim: str, story: Story, skip_numbers: bool = 
     else:
         result.claim_numbers = sorted(numbers_in(claim))
     if result.numbers_mismatch and result.verdict in ("confermato", "riportato", "se_ne_parla"):
+        was_vague = result.verdict == "se_ne_parla"
         result.verdict = "contraddetto"
-        result.explanation = (
+        numbers = (
             f"I numeri non tornano: tu scrivi {', '.join(_fmt(n) for n in result.claim_numbers)}, "
-            f"le testate riportano {', '.join(_fmt(n) for n in result.source_numbers[:6])}. " + result.explanation
+            f"le testate riportano {', '.join(_fmt(n) for n in result.source_numbers[:6])}."
         )
+        result.explanation = numbers + (f" La notizia è questa: «{story.title}»." if was_vague else " " + result.explanation)
 
     if llm.available():
         result = _llm_refine(result, claim)
