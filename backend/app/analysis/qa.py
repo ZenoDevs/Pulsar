@@ -81,7 +81,8 @@ def similarities(query: str, texts: List[str]) -> np.ndarray:
     if not texts:
         return np.array([])
     vec = _vectorizer()
-    X = vec.fit_transform(texts + [query])
+    clean = lambda t: re.sub(r"[’'`]", " ", t)  # l'Italia == l Italia == all'Italia
+    X = vec.fit_transform([clean(t) for t in texts] + [clean(query)])
     M = X[:-1]
     q = X[-1]
     return (M @ q.T).toarray().ravel()
@@ -217,7 +218,7 @@ def check_claim(claim: str, stories: List[Story]) -> CheckResult:
         who = ", ".join(best_interp.source_names) or "alcune testate"
         result.verdict = "opinione"
         result.explanation = f"Corrisponde a una lettura dei fatti sostenuta da {who}, non a un fatto accertato. Altre testate la raccontano diversamente."
-    elif best_fact and best_fact.similarity >= T_STRONG:
+    elif best_fact and (best_fact.similarity >= T_STRONG or (best_fact.similarity >= 0.33 and best_fact.similarity >= best_any.similarity - 0.06)):
         result.verdict = best_fact.status or "non_verificato"
         who = ", ".join(best_fact.source_names)
         explain = {
